@@ -90,6 +90,7 @@ fun AppShell(
     onDisplaySettingsChanged: (DriveDisplaySettings) -> Unit,
     simulatedGpsProvider: LocationSampleProvider,
     phoneGpsProvider: LocationSampleProvider? = null,
+    externalGnssProvider: LocationSampleProvider? = null,
     phoneGpsPermission: PhoneGpsPermissionState = PhoneGpsPermissionState(),
     sessionStore: LocalSessionStore = InMemorySessionStore(),
     exportShareTarget: ExportShareTarget = NoOpExportShareTarget,
@@ -109,12 +110,13 @@ fun AppShell(
     var tab by remember { mutableStateOf(AppTab.Drive) }
     var orientation by remember { mutableStateOf(DashOrientation.Portrait) }
     var savedVersion by remember { mutableStateOf(0L) }
-    val effectiveLocationFeedMode =
-        if (displaySettings.locationFeedMode == LocationFeedMode.PhoneGps && phoneGpsProvider != null) {
+    val effectiveLocationFeedMode = when {
+        displaySettings.locationFeedMode == LocationFeedMode.PhoneGps && phoneGpsProvider != null ->
             LocationFeedMode.PhoneGps
-        } else {
-            LocationFeedMode.Simulated
-        }
+        displaySettings.locationFeedMode == LocationFeedMode.ExternalGnss && externalGnssProvider != null ->
+            LocationFeedMode.ExternalGnss
+        else -> LocationFeedMode.Simulated
+    }
     // The session source must follow the LIVE feed, not the Track's marking source
     // (D-04/D-42). Capture the current feed mode in a State the controller's
     // sourceForTrack lambda reads at startTiming time, so switching feeds before a
@@ -127,6 +129,10 @@ fun AppShell(
                 when (liveFeedModeState.value) {
                     LocationFeedMode.PhoneGps -> SourceMetadata(
                         source = LocationSource.PhoneGps,
+                        isSimulated = false,
+                    )
+                    LocationFeedMode.ExternalGnss -> SourceMetadata(
+                        source = LocationSource.ExternalGnss,
                         isSimulated = false,
                     )
                     LocationFeedMode.Simulated -> SourceMetadata(
@@ -181,8 +187,11 @@ fun AppShell(
             (driveTimingActive && displaySettings.fullscreenWhileTiming)
         )
     val showBottomNav = !driveFullscreen
-    val activeLocationProvider =
-        if (effectiveLocationFeedMode == LocationFeedMode.PhoneGps) phoneGpsProvider!! else simulatedGpsProvider
+    val activeLocationProvider = when (effectiveLocationFeedMode) {
+        LocationFeedMode.PhoneGps -> phoneGpsProvider!!
+        LocationFeedMode.ExternalGnss -> externalGnssProvider!!
+        LocationFeedMode.Simulated -> simulatedGpsProvider
+    }
 
     LaunchedEffect(pendingPhoneGpsSelection, phoneGpsPermission.isGranted) {
         if (pendingPhoneGpsSelection && phoneGpsPermission.isGranted) {
@@ -377,6 +386,7 @@ fun AppShell(
                     settings = displaySettings,
                     phoneGpsAvailable = phoneGpsProvider != null && phoneGpsPermission.isSupported,
                     phoneGpsPermissionGranted = phoneGpsPermission.isGranted,
+                    externalGnssAvailable = externalGnssProvider != null,
                     locationFeedLocked = driveTimingActive,
                     glassesConnectionState = glassesConnectionState,
                     glassesDevices = glassesDevices,

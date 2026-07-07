@@ -49,6 +49,56 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
+ * One selectable entry in the location-source [SegmentedControl].
+ *
+ * Pure data so the availability/enabled/lock logic below is testable without
+ * Compose (D-01/D-08: External GNSS only ever appears as a real option when
+ * the platform wires a provider for it, and every option locks together while
+ * timing is active, matching existing Phone GPS/Simulated behavior).
+ */
+internal data class LocationSourceOption(
+    val mode: LocationFeedMode,
+    val enabled: Boolean,
+)
+
+/**
+ * Builds the ordered list of selectable location sources for Settings.
+ *
+ * Phone GPS and Simulated are always present (Simulated is always usable);
+ * External GNSS only appears when [externalGnssAvailable] — i.e. when the
+ * platform (Android) has wired a real provider for it. All options disable
+ * together while [locationFeedLocked] (timing active), matching the existing
+ * Phone GPS/Simulated lock behavior.
+ */
+internal fun locationSourceOptions(
+    phoneGpsAvailable: Boolean,
+    externalGnssAvailable: Boolean,
+    locationFeedLocked: Boolean,
+): List<LocationSourceOption> = buildList {
+    add(LocationSourceOption(LocationFeedMode.PhoneGps, phoneGpsAvailable && !locationFeedLocked))
+    add(LocationSourceOption(LocationFeedMode.Simulated, !locationFeedLocked))
+    if (externalGnssAvailable) {
+        add(LocationSourceOption(LocationFeedMode.ExternalGnss, !locationFeedLocked))
+    }
+}
+
+/**
+ * Resolves the [LocationFeedMode] actually in effect given platform
+ * availability: a requested mode whose provider is unavailable on this
+ * platform (e.g. External GNSS on iOS, or before Android wires BLE support)
+ * falls back to Simulated so the feed is never silently dead.
+ */
+internal fun resolveEffectiveLocationFeedMode(
+    requested: LocationFeedMode,
+    phoneGpsAvailable: Boolean,
+    externalGnssAvailable: Boolean,
+): LocationFeedMode = when {
+    requested == LocationFeedMode.PhoneGps && phoneGpsAvailable -> LocationFeedMode.PhoneGps
+    requested == LocationFeedMode.ExternalGnss && externalGnssAvailable -> LocationFeedMode.ExternalGnss
+    else -> LocationFeedMode.Simulated
+}
+
+/**
  * Display and mounted-phone behavior controls. Safety copy belongs here instead
  * of competing with live telemetry on the Drive surface.
  *
@@ -60,6 +110,7 @@ internal fun SettingsScreen(
     settings: DriveDisplaySettings,
     phoneGpsAvailable: Boolean,
     phoneGpsPermissionGranted: Boolean,
+    externalGnssAvailable: Boolean = false,
     locationFeedLocked: Boolean,
     glassesConnectionState: StateFlow<GlassesConnectionState> =
         MutableStateFlow(GlassesConnectionState.Idle),
@@ -70,8 +121,11 @@ internal fun SettingsScreen(
     onRequestPhoneGps: () -> Unit,
     onSettingsChanged: (DriveDisplaySettings) -> Unit,
 ) {
-    val effectiveLocationFeedMode =
-        if (phoneGpsAvailable) settings.locationFeedMode else LocationFeedMode.Simulated
+    val effectiveLocationFeedMode = resolveEffectiveLocationFeedMode(
+        requested = settings.locationFeedMode,
+        phoneGpsAvailable = phoneGpsAvailable,
+        externalGnssAvailable = externalGnssAvailable,
+    )
     val spacing = LapSightTheme.spacing
     val s = strings
 
@@ -110,35 +164,49 @@ internal fun SettingsScreen(
         }
 
         LapCard(title = s.locationSource) {
+            val locationOptions = locationSourceOptions(
+                phoneGpsAvailable = phoneGpsAvailable,
+                externalGnssAvailable = externalGnssAvailable,
+                locationFeedLocked = locationFeedLocked,
+            )
+            val optionLabels = locationOptions.map {
+                when (it.mode) {
+                    LocationFeedMode.PhoneGps -> s.phoneGps
+                    LocationFeedMode.Simulated -> s.simulated
+                    LocationFeedMode.ExternalGnss -> s.externalGnss
+                }
+            }
+            val selectedIndex = locationOptions.indexOfFirst { it.mode == effectiveLocationFeedMode }
+                .takeIf { it >= 0 } ?: 0
             SegmentedControl(
-                options = listOf(s.phoneGps, s.simulated),
-                selectedIndex = when (effectiveLocationFeedMode) {
-                    LocationFeedMode.PhoneGps -> 0
-                    LocationFeedMode.Simulated -> 1
-                },
+                options = optionLabels,
+                selectedIndex = selectedIndex,
                 onSelect = { index ->
-                    if (index == 0) {
-                        if (phoneGpsPermissionGranted) {
-                            onSettingsChanged(settings.copy(locationFeedMode = LocationFeedMode.PhoneGps))
-                        } else {
-                            onRequestPhoneGps()
+                    when (val mode = locationOptions.getOrNull(index)?.mode) {
+                        LocationFeedMode.PhoneGps -> {
+                            if (phoneGpsPermissionGranted) {
+                                onSettingsChanged(settings.copy(locationFeedMode = LocationFeedMode.PhoneGps))
+                            } else {
+                                onRequestPhoneGps()
+                            }
                         }
-                    } else {
-                        onSettingsChanged(settings.copy(locationFeedMode = LocationFeedMode.Simulated))
+                        LocationFeedMode.Simulated -> onSettingsChanged(
+                            settings.copy(locationFeedMode = LocationFeedMode.Simulated),
+                        )
+                        LocationFeedMode.ExternalGnss -> onSettingsChanged(
+                            settings.copy(locationFeedMode = LocationFeedMode.ExternalGnss),
+                        )
+                        null -> Unit
                     }
                 },
-                optionEnabled = { index ->
-                    when (index) {
-                        0 -> phoneGpsAvailable && !locationFeedLocked
-                        else -> !locationFeedLocked
-                    }
-                },
+                optionEnabled = { index -> locationOptions.getOrNull(index)?.enabled == true },
             )
             val sourceNote = when {
                 locationFeedLocked -> s.locationLockedWhileTiming
                 !phoneGpsAvailable -> s.phoneGpsUnavailable
                 settings.locationFeedMode == LocationFeedMode.PhoneGps && !phoneGpsPermissionGranted ->
                     s.phoneGpsPermissionRequired
+                effectiveLocationFeedMode == LocationFeedMode.ExternalGnss -> s.externalGnssUnvalidatedNote
                 else -> null
             }
             sourceNote?.let {

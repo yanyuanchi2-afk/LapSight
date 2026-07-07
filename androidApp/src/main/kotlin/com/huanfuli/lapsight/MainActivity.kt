@@ -30,6 +30,7 @@ import com.huanfuli.lapsight.shared.PhoneGpsPermissionState
 import com.huanfuli.lapsight.shared.SpeedUnit
 import com.huanfuli.lapsight.shared.ThemeMode
 import com.huanfuli.lapsight.shared.export.AndroidExportShareTarget
+import com.huanfuli.lapsight.shared.external.ExternalGnssProtocol
 import com.huanfuli.lapsight.shared.glasses.GlassesActions
 import com.huanfuli.lapsight.shared.glasses.GlassesConnectionState
 import com.huanfuli.lapsight.shared.glasses.GlassesDeviceSummary
@@ -49,6 +50,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val fineLocationPermissionGranted = mutableStateOf(false)
     private var phoneGpsProvider: AndroidPhoneLocationProvider? = null
+    private var externalGnssProvider: ExternalGnssLocationProvider? = null
     private lateinit var displaySettingsStore: AndroidDisplaySettingsStore
 
     /**
@@ -134,8 +136,10 @@ class MainActivity : ComponentActivity() {
             fineLocationPermissionGranted.value = hasFineLocationPermission()
         }
 
-    // BLUETOOTH_CONNECT is a runtime (dangerous) permission only from API 31;
-    // the manifest grant covers API 29-30 (Phase 7 minSdk floor, see 07-01).
+    // BLUETOOTH_CONNECT/BLUETOOTH_SCAN are runtime (dangerous) permissions only
+    // from API 31; the manifest grant covers API 29-30 (Phase 7 minSdk floor,
+    // see 07-01). BLUETOOTH_SCAN additionally serves the Phase 6 external GNSS
+    // BLE client (D-04).
     private val requestBluetoothPermission =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
@@ -210,8 +214,22 @@ class MainActivity : ComponentActivity() {
         Wearables.initialize(this)
             .onFailure { error, _ -> Log.e("MainActivity", "Wearables.initialize failed: ${error.description}") }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            requestBluetoothPermission.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT))
+            requestBluetoothPermission.launch(
+                arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN),
+            )
         }
+
+        // External GNSS (Phase 6, protocol preview, D-01/D-02): NMEA 0183 over a
+        // BLE UART-style notify characteristic. Injectable byte-stream client
+        // seam so this is testable without hardware; the BLE transport itself
+        // remains explicitly unvalidated until a real receiver confirms it.
+        externalGnssProvider = ExternalGnssLocationProvider(
+            client = AndroidExternalGnssBleClient(
+                context = this,
+                hasBlePermission = { AndroidExternalGnssBleClient.hasBlePermission(this) },
+            ),
+            protocol = ExternalGnssProtocol.Nmea0183,
+        )
 
         setContent {
             App(
@@ -219,6 +237,7 @@ class MainActivity : ComponentActivity() {
                 driveDisplayController = driveDisplayController,
                 displaySettingsStore = displaySettingsStore,
                 phoneGpsProvider = phoneGpsProvider,
+                externalGnssProvider = externalGnssProvider,
                 phoneGpsPermission = PhoneGpsPermissionState(
                     isSupported = true,
                     isGranted = fineLocationPermissionGranted.value,
@@ -246,7 +265,10 @@ class MainActivity : ComponentActivity() {
                     glassesIdleGpsState.value = state
                 },
                 onTimingForegroundChanged = { active, feedMode ->
-                    setTimingForegroundService(active && feedMode == LocationFeedMode.PhoneGps)
+                    setTimingForegroundService(
+                        active &&
+                            (feedMode == LocationFeedMode.PhoneGps || feedMode == LocationFeedMode.ExternalGnss),
+                    )
                 },
             )
         }
@@ -259,6 +281,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         phoneGpsProvider?.stop()
+        externalGnssProvider?.stop()
         glassesBridgeCollectionJobs.forEach { it.cancel() }
         glassesBridge?.stop()
         glassesScope.cancel()

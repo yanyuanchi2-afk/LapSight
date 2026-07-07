@@ -27,6 +27,10 @@ dependencies {
     androidTestImplementation(libs.mwdat.mockdevice)
     androidTestImplementation(libs.androidx.testExt.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+
+    // External GNSS provider shell (Phase 6 06-03): plain JVM unit tests with
+    // a fake byte-stream client, no BLE hardware or instrumentation required.
+    testImplementation(libs.junit)
 }
 
 android {
