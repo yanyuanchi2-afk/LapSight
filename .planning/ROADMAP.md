@@ -456,13 +456,13 @@ Plans:
 **Requirements:** EXT-01, EXT-02, EXT-03
 **Planning Gate:** Approved for execution on 2026-07-07; see `06-VALIDATION.md` and `06-PLAN-REVIEW.md`.
 
-**Plans:** 0/4 plans complete
+**Plans:** 1/4 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 06-01-PLAN.md - Shared external GNSS contracts, NMEA parser, and replay provider
+- [x] 06-01-PLAN.md - Shared external GNSS contracts, NMEA parser, and replay provider
 
 **Wave 2** *(blocked on Wave 1)*
 

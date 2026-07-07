@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Phase 6 plan verified — ready to execute from clean main
-last_updated: "2026-07-07T17:01:02-04:00"
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-07-07T21:25:16.691Z"
 progress:
   total_phases: 10
   completed_phases: 7
   total_plans: 47
-  completed_plans: 43
-  percent: 91
+  completed_plans: 44
+  percent: 70
 ---
 
 # State: LapSight
@@ -164,6 +164,7 @@ Requirements satisfied: GHOST-01, GHOST-02, GHOST-03, GHOST-04
 | 05.1-06 | 12min | 2 tasks | 2 files |
 | 05.1-04 | 30min | 2 tasks | 2 files |
 | Phase 07 P04 | 45 min | 3 tasks | 4 files |
+| Phase 06 P01 | 12min | 3 tasks | 5 files |
 
 ## Quick Tasks Completed
 
@@ -175,10 +176,15 @@ Requirements satisfied: GHOST-01, GHOST-02, GHOST-03, GHOST-04
 
 ## Session Continuity
 
-**Last session:** 2026-07-07T16:36:51-04:00
-**Stopped At:** Phase 7 complete through 07-06 fallback — ready to commit, merge, and clean workspace
-**Resume File:** .planning/phases/07-phone-to-glasses-dat-display-bridge/07-06-SUMMARY.md
+**Last session:** 2026-07-07T21:24:12.741Z
+**Stopped At:** Completed 06-01-PLAN.md
+**Resume File:** None
 
 ---
 
 *Last updated: 2026-07-07 after Phase 7 07-06 fallback closeout*
+
+## Decisions
+
+- [Phase 06]: 06-01 closes as protocol-preview only; NMEA parser and replay provider are verified by host tests, with no real receiver or BLE hardware validation claimed.
+- [Phase 06]: External GNSS samples continue through LocationSampleProvider as LocationSource.ExternalGnss; lap engine, UI, and platform APIs remain decoupled.
