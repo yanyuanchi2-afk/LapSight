@@ -456,7 +456,7 @@ Plans:
 **Requirements:** EXT-01, EXT-02, EXT-03
 **Planning Gate:** Approved for execution on 2026-07-07; see `06-VALIDATION.md` and `06-PLAN-REVIEW.md`.
 
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 Plans:
 
@@ -466,7 +466,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 06-02-PLAN.md - RaceBox protocol parser and synthetic replay corpus
+- [x] 06-02-PLAN.md - RaceBox protocol parser and synthetic replay corpus
 
 **Wave 3** *(blocked on Wave 2)*
 

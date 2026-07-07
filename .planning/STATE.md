@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-07-07T21:25:16.691Z"
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-07-07T21:38:53.555Z"
 progress:
   total_phases: 10
   completed_phases: 7
   total_plans: 47
-  completed_plans: 44
+  completed_plans: 45
   percent: 70
 ---
 
@@ -33,7 +33,7 @@ closed the validation gate with an Android-phone Go decision. The phone app
 remains the source of truth for GPS, sessions, lap engine state, and future HUD
 outputs.
 
-Next step: execute Phase 6 plan 06-01 from clean `main`. Phase 6 can proceed as
+Next step: execute Phase 6 plan 06-03 from clean `main`. Phase 6 can proceed as
 protocol-complete from parser/replay/build verification, but it must remain
 explicitly hardware-unvalidated until a real RaceBox/NMEA receiver or user
 feedback confirms behavior.
@@ -51,7 +51,7 @@ feedback confirms behavior.
 
 ## Next Command Candidates
 
-- Continue Phase 6 plan 06-01 after workspace cleanup: shared external GNSS contracts, NMEA parser, and replay provider.
+- Continue Phase 6 plan 06-03 after workspace cleanup: Android external GNSS provider shell and Settings source UX.
 - Use `.planning/phases/06-external-gnss-and-sensor-ingestion/06-VALIDATION.md` and `06-PLAN-REVIEW.md` as the execution gate: Phase 6 is protocol-first, clean-room, replay-backed, and hardware-unvalidated.
 - Phase 7 07-06 is closed as a Display-click fallback; raw captouch/tap-and-hold remains a future SDK/API-dependent item.
 - Preserve the Android phone source-of-truth boundary; the DAT Display layer must consume summarized timing state from the existing timing pipeline.
@@ -165,6 +165,7 @@ Requirements satisfied: GHOST-01, GHOST-02, GHOST-03, GHOST-04
 | 05.1-04 | 30min | 2 tasks | 2 files |
 | Phase 07 P04 | 45 min | 3 tasks | 4 files |
 | Phase 06 P01 | 12min | 3 tasks | 5 files |
+| Phase 06 P02 | 9min | 2 tasks | 3 files |
 
 ## Quick Tasks Completed
 
@@ -176,8 +177,8 @@ Requirements satisfied: GHOST-01, GHOST-02, GHOST-03, GHOST-04
 
 ## Session Continuity
 
-**Last session:** 2026-07-07T21:24:12.741Z
-**Stopped At:** Completed 06-01-PLAN.md
+**Last session:** 2026-07-07T21:38:53.535Z
+**Stopped At:** Completed 06-02-PLAN.md
 **Resume File:** None
 
 ---
@@ -188,3 +189,5 @@ Requirements satisfied: GHOST-01, GHOST-02, GHOST-03, GHOST-04
 
 - [Phase 06]: 06-01 closes as protocol-preview only; NMEA parser and replay provider are verified by host tests, with no real receiver or BLE hardware validation claimed.
 - [Phase 06]: External GNSS samples continue through LocationSampleProvider as LocationSource.ExternalGnss; lap engine, UI, and platform APIs remain decoupled.
+- [Phase 06]: 06-02 closes as RaceBox protocol-preview only; clean-room synthetic frames verify parser, telemetry metadata, 25 Hz replay, and reconnect-gap behavior with hardware validation explicitly Unverified.
+- [Phase 06]: RaceBox basic telemetry is optional metadata parsed from explicit protocol fields only and never feeds lap timing or LocationSample emission by itself.
