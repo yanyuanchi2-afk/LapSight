@@ -1,5 +1,7 @@
 package com.huanfuli.lapsight.shared.external
 
+import com.huanfuli.lapsight.shared.LocationSampleProvider
+import com.huanfuli.lapsight.shared.LocationSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -169,6 +171,54 @@ class RaceBoxFrameParserTest {
 
         val unsupported = assertIs<RaceBoxFrameParseResult.UnsupportedTelemetry>(result)
         assertEquals(RaceBoxFrameUnsupportedTelemetryReason.UnsupportedMessage, unsupported.reason)
+    }
+
+    @Test
+    fun raceBox25HzFixStreamDrainsThroughExternalReplayProviderInOrder() {
+        val frames = (0 until 25)
+            .map { index ->
+                RaceBoxFrameBuilder.liveFix(
+                    iTowMillis = 5_000L + index * 40L,
+                    latitudeDegrees = 39.0 + index * 0.0001,
+                    longitudeDegrees = -86.0 - index * 0.0001,
+                )
+            }
+            .reduce(ByteArray::plus)
+        val decodedFixes = RaceBoxFrameParser().accept(frames).snapshots()
+        val provider: LocationSampleProvider = ExternalGnssReplayProvider(decodedFixes)
+
+        provider.start()
+        val drained = provider.drainPending()
+
+        assertEquals(25, drained.size)
+        assertEquals((0 until 25).map { 5_000L + it * 40L }, drained.map { it.elapsedMillis })
+        assertEquals(39.0, drained.first().latitude, 0.000001)
+        assertEquals(39.0024, drained.last().latitude, 0.000001)
+        assertTrue(drained.all { it.source == LocationSource.ExternalGnss })
+        assertEquals(null, decodedFixes.first().source.updateRateHz)
+        decodedFixes.drop(1).forEach { snapshot ->
+            assertEquals(25.0, snapshot.source.updateRateHz ?: 0.0, 0.000001)
+        }
+    }
+
+    @Test
+    fun reconnectGapPreservesReceiverTimestampsThroughReplayProvider() {
+        val frames = listOf(
+            RaceBoxFrameBuilder.liveFix(iTowMillis = 8_000L, latitudeDegrees = 39.0),
+            RaceBoxFrameBuilder.liveFix(iTowMillis = 8_040L, latitudeDegrees = 39.0001),
+            RaceBoxFrameBuilder.liveFix(iTowMillis = 13_000L, latitudeDegrees = 39.0002),
+            RaceBoxFrameBuilder.liveFix(iTowMillis = 13_040L, latitudeDegrees = 39.0003),
+        ).reduce(ByteArray::plus)
+        val decodedFixes = RaceBoxFrameParser().accept(frames).snapshots()
+        val provider: LocationSampleProvider = ExternalGnssReplayProvider(decodedFixes)
+
+        provider.start()
+        val drained = provider.drainPending()
+
+        assertEquals(listOf(8_000L, 8_040L, 13_000L, 13_040L), drained.map { it.elapsedMillis })
+        assertEquals(null, decodedFixes[2].source.updateRateHz, "reconnect gaps should not be smoothed as 25 Hz")
+        assertEquals(25.0, decodedFixes[3].source.updateRateHz ?: 0.0, 0.000001)
+        assertEquals(ExternalGnssHardwareValidationStatus.Unverified, decodedFixes[2].source.hardwareValidationStatus)
     }
 
 }
