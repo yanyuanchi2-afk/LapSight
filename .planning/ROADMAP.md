@@ -456,7 +456,7 @@ Plans:
 **Requirements:** EXT-01, EXT-02, EXT-03
 **Planning Gate:** Approved for execution on 2026-07-07; see `06-VALIDATION.md` and `06-PLAN-REVIEW.md`.
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 
@@ -474,7 +474,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3)*
 
-- [ ] 06-04-PLAN.md - End-to-end timing replay, documentation, and hardware-risk closeout
+- [x] 06-04-PLAN.md - End-to-end timing replay, documentation, and hardware-risk closeout
 
 **Success Criteria:**
 
