@@ -14,6 +14,13 @@ enum class ThemeMode {
 enum class LocationFeedMode {
     PhoneGps,
     Simulated,
+    /**
+     * Optional Android external GNSS receiver (RaceBox/NMEA protocol preview,
+     * D-01/D-02). Only selectable when the platform wires a real
+     * [com.huanfuli.lapsight.shared.LocationSampleProvider] for it; falls back
+     * to Simulated everywhere else (iOS, or Android without a provider).
+     */
+    ExternalGnss,
 }
 
 enum class LanguageMode {
