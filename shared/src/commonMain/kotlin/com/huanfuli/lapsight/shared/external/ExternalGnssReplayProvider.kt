@@ -56,7 +56,16 @@ class ExternalGnssReplayProvider(
     }
 }
 
-private fun ExternalGnssFixSnapshot.toLocationSample(): LocationSample? {
+/**
+ * Maps a decoded external fix into the shared [LocationSample] contract, or
+ * `null` when the snapshot has no usable location yet (no-fix/acquiring).
+ *
+ * Public so any [com.huanfuli.lapsight.shared.LocationSampleProvider]
+ * implementation that decodes external protocol bytes — replay-backed here,
+ * platform BLE clients elsewhere — shares one conversion instead of
+ * duplicating field mapping per platform.
+ */
+fun ExternalGnssFixSnapshot.toLocationSample(): LocationSample? {
     val elapsedMillis = elapsedMillis ?: return null
     val latitude = latitude ?: return null
     val longitude = longitude ?: return null
