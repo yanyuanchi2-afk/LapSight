@@ -456,7 +456,7 @@ Plans:
 **Requirements:** EXT-01, EXT-02, EXT-03
 **Planning Gate:** Approved for execution on 2026-07-07; see `06-VALIDATION.md` and `06-PLAN-REVIEW.md`.
 
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 
 Plans:
 
@@ -470,7 +470,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 06-03-PLAN.md - Android external GNSS provider shell and Settings source UX
+- [x] 06-03-PLAN.md - Android external GNSS provider shell and Settings source UX
 
 **Wave 4** *(blocked on Wave 3)*
 
