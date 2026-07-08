@@ -18,15 +18,22 @@ class RaceBoxFrameParser(
             val syncIndex = streamBuffer.indexOfSync()
             when {
                 syncIndex < 0 -> {
-                    if (streamBuffer.isNotEmpty()) {
+                    val keepTrailingByte = streamBuffer.isNotEmpty() &&
+                        streamBuffer.last().toUnsignedInt() == SYNC_1
+                    val garbageLength = if (keepTrailingByte) streamBuffer.size - 1 else streamBuffer.size
+                    if (garbageLength > 0) {
                         results += RaceBoxFrameParseResult.Rejected(
                             messageClass = null,
                             messageId = null,
                             reason = RaceBoxFrameRejectReason.MissingSync,
-                            rawFrame = streamBuffer,
+                            rawFrame = streamBuffer.copyOfRange(0, garbageLength),
                         )
                     }
-                    streamBuffer = ByteArray(0)
+                    streamBuffer = if (keepTrailingByte) {
+                        streamBuffer.copyOfRange(garbageLength, streamBuffer.size)
+                    } else {
+                        ByteArray(0)
+                    }
                     break
                 }
                 syncIndex > 0 -> {

@@ -73,6 +73,35 @@ Section 5), close this register by working through, in order:
    `Verified` only for the specific protocol/receiver combination that was
    actually tested; do not flip it globally from one successful device test.
 
+## 5. Deferred code-level follow-ups (not hardware-unknowns)
+
+Plan 06-06 (gap-closure) fixed CR-01, WR-03, and WR-04 from `06-REVIEW.md`
+because all three are pure-Kotlin, hardware-independent defects already
+covered (or now covered) by the existing host-test suite. The four findings
+below are explicitly **not** fixed by that pass. Unlike sections 1-2 above,
+these are not unknowns about how a real receiver behaves — they are known,
+reproducible-by-inspection code defects in
+`androidApp/src/main/kotlin/com/huanfuli/lapsight/ExternalGnssBleClient.kt`,
+confirmed by direct code reading in `06-REVIEW.md`. They are recorded here,
+non-silently, as a deliberate scope decision rather than dropped.
+
+| ID | Finding | Location (`06-REVIEW.md`) | Why deferred |
+|----|---------|---------------------------|---------------|
+| WR-01 | `AndroidExternalGnssBleClient` leaks the previous `BluetoothGatt` on every automatic reconnect — the stale `gatt` field is silently overwritten by `connect(device)` without ever calling `close()`, eventually exhausting the OS's small (~7 on stock AOSP) concurrent-GATT-client pool | `ExternalGnssBleClient.kt:107-118, 209-221, 253-260`; WR-01 section, lines 88-113 | Fixing without WR-05 (a testable seam) would leave the fix unverified by automation |
+| WR-02 | `discoverServices()` swallows permission-check failures and `runCatching` exceptions with no `reportPhase(Failed)` call, so the connection state can stick at "Connecting" indefinitely with no user-visible failure | `ExternalGnssBleClient.kt:223-227`; WR-02 section, lines 115-137 | Same testability gap as WR-01 |
+| WR-05 | `AndroidExternalGnssBleClient`'s scan/connect/reconnect/notification-subscription state machine has zero automated test coverage of any kind; only the higher-level `ExternalGnssLocationProvider` is tested, via a hand-written fake `ExternalGnssByteStreamClient` double that never exercises the real BLE class | `ExternalGnssBleClient.kt` (whole file); WR-05 section, lines 167-171 | Building this coverage requires extracting a testable seam around `BluetoothAdapter`/`BluetoothGatt` (a nontrivial refactor, not a two-line fix) or real hardware — both already tracked as accepted/deferred hardware-path risk under decision D-02 |
+| IN-02 | The `AndroidManifest.xml` `BLUETOOTH_SCAN` comment states the scan is filtered by name/address at the OS level, but `startScanInternal()` actually calls `scanner.startScan(emptyList(), ...)` (an unfiltered scan) and does name matching only in the callback afterward | `AndroidManifest.xml:15-18`, `ExternalGnssBleClient.kt:194-200`; IN-02 section, lines 191-195 | Cosmetic manifest-comment inaccuracy with zero behavior impact; trivial cleanup, not worth its own task in a gap-closure pass scoped to hardware-independent parser bugs |
+
+**Rationale for deferring WR-01/WR-02 as one unit with WR-05:** the fix code
+for WR-01 and WR-02 individually is simple (a `closeGatt()` call and a
+`reportPhase(Failed)` call respectively), but there is no way to prove either
+fix actually works without either the `BluetoothAdapter`/`BluetoothGatt`
+testable-seam refactor (WR-05) or a real receiver, both of which are
+out of scope for this narrow gap-closure plan. Landing WR-01/WR-02 without
+automated verification would violate the Nyquist rule (every task must have
+an automated `<verify>`). A future pass should do the WR-05 seam extraction
+first, then land WR-01/WR-02 against real unit tests in the same pass.
+
 ---
 
 *Phase: 06-external-gnss-and-sensor-ingestion*
