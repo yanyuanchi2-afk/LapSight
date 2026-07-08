@@ -1,6 +1,6 @@
 ---
 phase: 06-external-gnss-and-sensor-ingestion
-reviewed: 2026-07-07T22:40:36Z
+reviewed: 2026-07-08T00:00:00Z
 depth: standard
 files_reviewed: 20
 files_reviewed_list:
@@ -27,175 +27,132 @@ files_reviewed_list:
   - shared/src/commonTest/kotlin/com/huanfuli/lapsight/shared/external/RaceBoxFrameParserTest.kt
   - shared/src/commonTest/kotlin/com/huanfuli/lapsight/shared/ui/ExternalGnssSettingsTest.kt
 findings:
-  critical: 1
+  critical: 0
   warning: 5
   info: 2
-  total: 8
+  total: 7
 status: issues_found
 ---
 
 # Phase 06: Code Review Report
 
-**Reviewed:** 2026-07-07T22:40:36Z
+**Reviewed:** 2026-07-08T00:00:00Z
 **Depth:** standard
 **Files Reviewed:** 20 (files_reviewed_list above lists 21 entries; `androidApp/build.gradle.kts` was reviewed as pure config with no logic findings)
 **Status:** issues_found
 
 ## Summary
 
-Phase 6 external GNSS ingestion (NMEA 0183 + RaceBox protocol preview) is well-tested at the parser/pipeline level — the replay-based test suite (`Nmea0183ParserTest`, `RaceBoxFrameParserTest`, `ExternalGnssTimingPipelineTest`, `ExternalGnssSettingsTest`) is thorough and the docs are honest about hardware-unvalidated status. However, direct code reading surfaced one confirmed data-loss bug in the RaceBox binary frame parser's fragmented-stream handling that directly contradicts the documented/tested "fragmented byte reads are handled" claim, plus several robustness gaps in the Android BLE client and NMEA parser that were not exercised by any test in this phase (the Android BLE client itself has zero test coverage — only the higher-level `ExternalGnssLocationProvider` is tested via a fake byte-stream double).
+This is a gap-closure re-review after Plan 06-05 (connection-status UI) and Plan 06-06 (RaceBox/NMEA parser hardening) were merged. All four findings the gap-closure work was scoped to close are verified fixed with matching regression coverage:
 
-## Critical Issues
+- **CR-01** (RaceBox sync-byte-split data loss): fixed exactly as previously recommended — `RaceBoxFrameParser.accept()` now retains a trailing lone `0xB5` byte instead of wiping the buffer, and `RaceBoxFrameParserTest.fragmentedInputSplitExactlyAtSyncBoundaryStillDecodes` directly exercises the split-at-sync-boundary case that was previously silently dropped.
+- **WR-03 (prior report)** (unbounded NMEA buffer growth): fixed — `Nmea0183Parser` now caps `streamBuffer` at `MAX_BUFFERED_NMEA_CHARS` (4096), and `Nmea0183ParserTest.unterminatedOversizedStreamDoesNotWedgeTheParser` proves the parser recovers after an oversized unterminated stream. (See WR-01 below for a related but distinct ordering defect introduced by this same fix.)
+- **WR-04 (prior report)** (HDOP mislabeled as horizontalAccuracyMeters): fixed — `Nmea0183Parser.snapshot()` now leaves `horizontalAccuracyMeters = null` for NMEA fixes with an explanatory comment, and `Nmea0183ParserTest.hdopIsNotMislabeledAsHorizontalAccuracyMeters` asserts it directly.
+- **IN-01 (prior report)** (Settings source-note ordering hid the External-GNSS note behind the generic Phone-GPS-unavailable note): fixed — `resolveSourceNote()` now checks the `ExternalGnss` branch before the `!phoneGpsAvailable` branch, with `ExternalGnssSettingsTest.resolveSourceNotePrefersExternalGnssNoteOverGenericPhoneGpsUnavailable` covering the regression.
 
-### CR-01: RaceBox frame parser drops a legitimate frame when its 2-byte sync sequence is split across two `accept()` calls
-
-**File:** `shared/src/commonMain/kotlin/com/huanfuli/lapsight/shared/external/RaceBoxFrameParser.kt:17-31`
-**Issue:** `accept()` locates a frame boundary via `indexOfSync()`, which only matches when *both* sync bytes (`0xB5`, `0x62`) are present in the current buffer (`for (index in 0 until size - 1)` — the last byte alone is never checked). When `indexOfSync()` returns `-1` (no full 2-byte match anywhere in the buffer), the code treats the **entire buffer as garbage and discards it**:
-
-```kotlin
-syncIndex < 0 -> {
-    if (streamBuffer.isNotEmpty()) {
-        results += RaceBoxFrameParseResult.Rejected(..., rawFrame = streamBuffer)
-    }
-    streamBuffer = ByteArray(0)   // <-- wipes a legitimate trailing partial sync byte
-    break
-}
-```
-
-If a BLE notification chunk boundary happens to fall exactly between the two sync bytes (buffer ends with a lone `0xB5`, and `0x62` arrives in the *next* `accept()` call), the valid `0xB5` is discarded here. The next `accept()` call then receives a stream starting with `0x62` followed by the rest of the frame — `indexOfSync()` will never find `0xB5,0x62` in that data either, so the **entire real frame is silently lost** and mis-reported as two separate `MissingSync` rejections, even though the bytes were a well-formed frame that merely arrived in two chunks. This is exactly the "fragmented byte reads" scenario the docs (`docs/EXTERNAL-GNSS.md` §2.3) and `RaceBoxFrameParserTest.fragmentedInputMatchesWholeFrameInput` claim is handled — but that test only fragments at byte offsets that keep both sync bytes together (`copyOfRange(0, 3)` etc.), so it never exercises a split exactly between sync byte 1 and sync byte 2, and the bug goes undetected.
-**Fix:** When no full sync match is found, only discard bytes that cannot possibly be the start of a future sync sequence — i.e. keep a trailing lone `0xB5` byte instead of wiping the whole buffer:
-```kotlin
-syncIndex < 0 -> {
-    val keepTrailingByte = streamBuffer.isNotEmpty() &&
-        streamBuffer.last().toUnsignedInt() == SYNC_1
-    val garbageLength = if (keepTrailingByte) streamBuffer.size - 1 else streamBuffer.size
-    if (garbageLength > 0) {
-        results += RaceBoxFrameParseResult.Rejected(
-            messageClass = null,
-            messageId = null,
-            reason = RaceBoxFrameRejectReason.MissingSync,
-            rawFrame = streamBuffer.copyOfRange(0, garbageLength),
-        )
-    }
-    streamBuffer = if (keepTrailingByte) streamBuffer.copyOfRange(garbageLength, streamBuffer.size) else ByteArray(0)
-    break
-}
-```
-Add a regression test that feeds a valid frame split exactly at the sync boundary (e.g. `burst.copyOfRange(0, 1)` then `burst.copyOfRange(1, burst.size)`) and asserts the frame still decodes.
+Beyond verifying those four fixes, this full pass found one new correctness gap introduced by the buffer-cap hardening itself (the size-cap check runs *before* draining already-complete sentences, so it can silently discard valid, terminated data alongside the garbage it's meant to bound), one previously-unflagged thread-safety gap in the Android BLE/provider layer, and several still-open carryforward issues from the previous review (`WR-01`/`WR-02`/`WR-05`/`IN-02` in the prior report) that were not in this gap-closure's scope and remain unfixed. None of the newly-found issues are rated Critical — they are narrower or lower-probability than the fixed CR-01, but are real and worth tracking.
 
 ## Warnings
 
-### WR-01: `AndroidExternalGnssBleClient` leaks the previous `BluetoothGatt` on every automatic reconnect
+### WR-01: `Nmea0183Parser`'s oversized-buffer guard can silently discard complete, valid, already-terminated sentences
 
-**File:** `androidApp/src/main/kotlin/com/huanfuli/lapsight/ExternalGnssBleClient.kt:107-118, 209-221, 253-260`
-**Issue:** On an unexpected disconnect while `running` is still true, `onConnectionStateChange` reports `Reconnecting` and calls `startScanInternal()` again, but never calls `gatt?.close()` on the old, now-disconnected `BluetoothGatt` instance:
+**File:** `shared/src/commonMain/kotlin/com/huanfuli/lapsight/shared/external/Nmea0183Parser.kt:17-22`
+**Issue:** The buffer-cap fix appends new bytes and applies the size cap *before* the sentence-draining loop runs:
+```kotlin
+fun accept(text: String): List<Nmea0183ParseResult> {
+    streamBuffer.append(text)
+    if (streamBuffer.length > MAX_BUFFERED_NMEA_CHARS) {
+        streamBuffer.clear()   // wipes EVERYTHING, including complete unprocessed sentences
+    }
+    val results = mutableListOf<Nmea0183ParseResult>()
+    while (true) {
+        val lineEnd = streamBuffer.indexOfLineEnd()
+        ...
+```
+If the residual buffer from a prior malformed/unterminated stretch is already near the 4096-char cap, and the *next* chunk passed to `accept()` both pushes the total over the cap **and** contains one or more complete, correctly `\r`/`\n`-terminated sentences (e.g. a flaky receiver that sends a long garbage run and then recovers mid-chunk, or several buffered sentences delivered in one burst after a reconnect), `streamBuffer.clear()` wipes all of it — including the complete, valid, checksummed sentences — before the parsing loop ever gets a chance to drain them. No `Rejected`/`Ignored` result is emitted for the lost data either, so this failure mode is invisible to any caller. This is a smaller-blast-radius sibling of the now-fixed CR-01 (silent data loss with no diagnostic trace), introduced by the very fix meant to hedge against a different failure mode. It requires a specific timing (buffer already near-cap, then a chunk that both exceeds the cap and carries complete terminated sentences) so it is much less likely to trigger than CR-01 was, especially given typical BLE MTU sizes, but it is a genuine defect in code that was *just* hardened for exactly this class of problem.
+**Fix:** Drain all currently-completable sentences first, and only apply the size cap to whatever unterminated residue remains afterward:
+```kotlin
+fun accept(text: String): List<Nmea0183ParseResult> {
+    streamBuffer.append(text)
+    val results = mutableListOf<Nmea0183ParseResult>()
+
+    while (true) {
+        val lineEnd = streamBuffer.indexOfLineEnd()
+        if (lineEnd < 0) break
+        ...
+    }
+
+    if (streamBuffer.length > MAX_BUFFERED_NMEA_CHARS) {
+        streamBuffer.clear()
+    }
+
+    return results
+}
+```
+Add a regression test that appends a >4096-char unterminated prefix in one `accept()` call followed immediately (same call) by a complete valid sentence, and asserts the valid sentence is still decoded.
+
+### WR-02: `AndroidExternalGnssBleClient` leaks the previous `BluetoothGatt` on every automatic reconnect (carryforward from prior review's WR-01, unfixed)
+
+**File:** `androidApp/src/main/kotlin/com/huanfuli/lapsight/ExternalGnssBleClient.kt:107-116`
+**Issue:** Still present exactly as previously reported. On an unexpected disconnect while `running` is true, `onConnectionStateChange` reports `Reconnecting` and calls `startScanInternal()` again, but never calls `gatt?.close()` on the stale `BluetoothGatt`:
 ```kotlin
 BluetoothProfile.STATE_DISCONNECTED -> {
     if (running) {
         reportPhase(ExternalGnssConnectionPhase.Reconnecting)
         startScanInternal()   // old `gatt` field is never closed
-    } else { ... }
-}
-```
-When the scan later matches and `connect(device)` runs, `gatt = device.connectGatt(...)` (line 216-220) silently overwrites the field, orphaning the previous `BluetoothGatt` object without ever calling `close()`. `closeGatt()` (which does call `disconnect()`/`close()`) is only invoked from `stop()`. Android's BLE stack has a small system-wide pool of concurrent GATT client registrations (commonly ~7 on stock AOSP); repeated reconnect cycles — the exact scenario this phase's "reconnect gap" coverage (D-06) is meant to represent — will progressively exhaust that pool and eventually make all BLE connections (including future attempts by this app) fail silently.
-**Fix:** Close the stale `gatt` before starting a new scan/connect cycle:
-```kotlin
-BluetoothProfile.STATE_DISCONNECTED -> {
-    if (running) {
-        closeGatt() // close+null the old gatt before reconnecting
-        reportPhase(ExternalGnssConnectionPhase.Reconnecting)
-        startScanInternal()
     } else {
-        closeGatt()
         reportPhase(ExternalGnssConnectionPhase.Disconnected)
     }
 }
 ```
+When `connect(device)` later runs, `gatt = device.connectGatt(...)` silently overwrites the field, orphaning the previous `BluetoothGatt` without ever calling `close()`. This was not in scope for the 06-05/06-06 gap-closure plans and remains unfixed. Android's BLE stack has a small system-wide cap on concurrent GATT client registrations; repeated reconnect cycles (the exact "reconnect gap" scenario this phase's D-06 coverage represents) will progressively exhaust it.
+**Fix:** Call `closeGatt()` before starting a new scan/connect cycle on both branches of the disconnect handler.
 
-### WR-02: `discoverServices()` swallows exceptions with no failure feedback, leaving the connection state stuck at "Connecting"
+### WR-03: `discoverServices()` swallows exceptions with no failure feedback (carryforward from prior review's WR-02, unfixed)
 
 **File:** `androidApp/src/main/kotlin/com/huanfuli/lapsight/ExternalGnssBleClient.kt:223-227`
-**Issue:**
+**Issue:** Still present exactly as previously reported:
 ```kotlin
 private fun discoverServices(g: BluetoothGatt) {
     if (!hasBlePermission()) return
     runCatching { g.discoverServices() }
 }
 ```
-Unlike `startScanInternal()` (which does `.onFailure { reportPhase(Failed) }`), this method discards both the permission-check-fails path and any exception from `g.discoverServices()` without ever transitioning the connection phase away from `Connecting` (set immediately before this call in `onConnectionStateChange`). If discovery never starts, `onServicesDiscovered` never fires, and the Settings UI is left showing "Connecting" indefinitely with no way for the user to know the attempt failed.
-**Fix:**
-```kotlin
-private fun discoverServices(g: BluetoothGatt) {
-    if (!hasBlePermission()) {
-        reportPhase(ExternalGnssConnectionPhase.Failed)
-        return
-    }
-    runCatching { g.discoverServices() }.onFailure {
-        reportPhase(ExternalGnssConnectionPhase.Failed)
-    }
-}
-```
+Unlike `startScanInternal()`, this discards both the permission-check-fails path and any exception from `g.discoverServices()` without ever transitioning the connection phase away from `Connecting`. If discovery never starts, `onServicesDiscovered` never fires, and the Settings UI (now that Plan 06-05 wires a live connection-status display) is left showing "Connecting" indefinitely with no way for the user to know the attempt failed.
+**Fix:** Report `ExternalGnssConnectionPhase.Failed` on both the permission-gate-fails path and a caught exception.
 
-### WR-03: `Nmea0183Parser`'s stream buffer has no upper bound, allowing unbounded memory growth from an unterminated byte stream
+### WR-04: `running`/parser/gatt state is mutated on the main thread but read from BLE callback threads without synchronization
 
-**File:** `shared/src/commonMain/kotlin/com/huanfuli/lapsight/shared/external/Nmea0183Parser.kt:5, 10-37`
-**Issue:** `accept()` appends every incoming chunk to `streamBuffer` (a `StringBuilder`) and only trims it once a `\r`/`\n` line terminator is found. There is no cap on `streamBuffer.length`. `AndroidExternalGnssBleClient` auto-connects to any nearby BLE peripheral whose advertised name merely starts with `"RaceBox"` (case-insensitive, no pairing/bonding confirmation — see `deviceNamePrefix` default and `scanCallback.onScanResult`), so a nearby device that spoofs that name prefix and streams bytes that never contain `\r`/`\n` will make this buffer grow without bound for as long as the connection stays open, risking an OOM crash of the app. `RaceBoxFrameParser` has an (buggy, see CR-01) reset-on-garbage path that incidentally bounds its own buffer growth; `Nmea0183Parser` has no equivalent safeguard at all.
-**Fix:** Cap `streamBuffer` length and drop/reset when a single "sentence" grows implausibly large (NMEA sentences are ≤82 characters per the standard):
-```kotlin
-if (streamBuffer.length > MAX_BUFFERED_CHARS) {
-    streamBuffer.clear()
-}
-```
-placed near the top of `accept(text: String)`, with `MAX_BUFFERED_CHARS` set generously above 82 (e.g. 4096) to tolerate several concatenated sentences without ever growing unbounded.
+**File:** `androidApp/src/main/kotlin/com/huanfuli/lapsight/ExternalGnssLocationProvider.kt:40-44, 64-77, 121-132`; `androidApp/src/main/kotlin/com/huanfuli/lapsight/ExternalGnssBleClient.kt:78-98, 155-181`
+**Issue:** `ExternalGnssLocationProvider.running`, `nmeaParser`, and `raceBoxParser` are plain (non-`@Volatile`, unsynchronized) `var`s. `start()`/`stop()`/`reset()` run on the Compose/main thread (invoked from `AppShell`/`MainActivity`), but `handleBytes()` — which reads `running` and dereferences `nmeaParser`/`raceBoxParser` — is invoked from `AndroidExternalGnssBleClient`'s BLE callback (`BluetoothGattCallback.onCharacteristicChanged`), which Android runs on a Binder/background thread, not the main thread. Symmetrically, `AndroidExternalGnssBleClient.running`, `gatt`, `onBytes`, and `onPhase` are written from `start()`/`stop()` (main thread) and read from `scanCallback`/`gattCallback` (BLE callback thread) with no `@Volatile`/synchronization either. Without a happens-before edge, a callback thread can observe a stale `running == true` (or a stale/replaced parser reference) after `stop()`/`reset()` has already run on the main thread, risking continued scan/connect activity or byte processing against state the caller believes has already been torn down. The `queue` field is the only piece of this class's state that is correctly guarded (`synchronized(queue)`).
+**Fix:** Mark `running` (in both classes) `@Volatile`, and either guard `nmeaParser`/`raceBoxParser` swaps with the same lock used for `queue` or make them `@Volatile` as well, so writes from `start()`/`stop()`/`reset()` are visible to the BLE callback thread before it acts on new bytes.
 
-### WR-04: NMEA horizontal accuracy is populated directly from HDOP without unit conversion
-
-**File:** `shared/src/commonMain/kotlin/com/huanfuli/lapsight/shared/external/Nmea0183Parser.kt:241-247`
-**Issue:** `snapshot()` builds `ExternalGnssFixQuality` with:
-```kotlin
-quality = ExternalGnssFixQuality(
-    isValid = currentFix.isValid,
-    fixType = ...,
-    satellitesInUse = currentFix.satellitesInUse,
-    hdop = currentFix.hdop,
-    horizontalAccuracyMeters = currentFix.hdop,   // HDOP is dimensionless, not meters
-),
-```
-HDOP (Horizontal Dilution of Precision) is a unitless multiplier typically in the range 0.5–20+, not a distance. Assigning it directly to `horizontalAccuracyMeters` produces a value that looks like a real accuracy figure (and is forwarded verbatim into `LocationSample.horizontalAccuracyMeters` via `toLocationSample()`) but is not actually meters — e.g. a healthy `hdop = 0.9` will be reported as "0.9 m accuracy," which is misleadingly precise and has no defined relationship to true positional error. `quality.hdop` already carries the raw HDOP value separately, so this field is redundant and wrong.
-**Fix:** Either leave `horizontalAccuracyMeters` `null` for NMEA fixes (no NMEA sentence parsed here carries a real accuracy-in-meters field) or apply a documented estimation formula (e.g. `hdop * UERE_METERS`) with a comment explaining the approximation, rather than a raw unit-mismatched assignment.
-
-### WR-05: `AndroidExternalGnssBleClient` has no automated test coverage
+### WR-05: `AndroidExternalGnssBleClient` has no automated test coverage (carryforward from prior review's WR-05, unfixed)
 
 **File:** `androidApp/src/main/kotlin/com/huanfuli/lapsight/ExternalGnssBleClient.kt`
-**Issue:** `ExternalGnssLocationProviderTest.kt` only exercises `ExternalGnssLocationProvider` against a hand-written fake `ExternalGnssByteStreamClient`; the real `AndroidExternalGnssBleClient` implementation (scan/connect/reconnect/notification-subscription state machine) has zero test coverage of any kind (no instrumented test using a mock BLE stack either). CR-01/WR-01/WR-02 above are all bugs in code paths that no test in this phase would ever catch. Given the docs already flag this class as hardware-unvalidated, that's an accepted risk for real-hardware behavior, but the *state-machine logic itself* (permission gating, phase transitions, gatt lifecycle) is deterministic and could be unit-tested behind a thin `BluetoothAdapter`/`BluetoothGatt` seam without any real device.
-**Fix:** Not blocking for this phase's stated scope, but worth tracking as follow-up: extract the scan/connect/gatt-callback logic behind an interface that can be exercised with fakes, at least covering the reconnect-leak and discover-services-failure paths flagged above.
+**Issue:** `ExternalGnssLocationProviderTest.kt` only exercises `ExternalGnssLocationProvider` against a hand-written fake `ExternalGnssByteStreamClient`; the real `AndroidExternalGnssBleClient` implementation (scan/connect/reconnect/notification-subscription state machine) still has zero test coverage of any kind. WR-02 and WR-04 above are both bugs in code paths no test in this phase would catch.
+**Fix:** Not blocking, but still worth tracking: extract the scan/connect/gatt-callback logic behind a seam that can be exercised with fakes (e.g. a thin `BluetoothAdapter`/`BluetoothGatt` wrapper), at least covering the reconnect-leak and discover-services-failure paths.
 
 ## Info
 
-### IN-01: Settings "source note" priority can show a Phone-GPS-unavailable message while External GNSS is actually selected and active
+### IN-01: `ExternalGnssConnectionState.message` is never populated by production code, making the new error-detail UI branch dead
 
-**File:** `shared/src/commonMain/kotlin/com/huanfuli/lapsight/shared/ui/SettingsScreen.kt:204-211`
-**Issue:**
+**File:** `shared/src/commonMain/kotlin/com/huanfuli/lapsight/shared/ui/SettingsScreen.kt:435-443`; `shared/src/commonMain/kotlin/com/huanfuli/lapsight/shared/external/ExternalGnssModels.kt:42-50`; `androidApp/src/main/kotlin/com/huanfuli/lapsight/ExternalGnssLocationProvider.kt:121-123`
+**Issue:** Plan 06-05's `ExternalGnssSettingsCard` renders an extra detail line when the connection has failed:
 ```kotlin
-val sourceNote = when {
-    locationFeedLocked -> s.locationLockedWhileTiming
-    !phoneGpsAvailable -> s.phoneGpsUnavailable
-    settings.locationFeedMode == LocationFeedMode.PhoneGps && !phoneGpsPermissionGranted -> s.phoneGpsPermissionRequired
-    effectiveLocationFeedMode == LocationFeedMode.ExternalGnss -> s.externalGnssUnvalidatedNote
-    else -> null
-}
+state.message.takeIf { state.phase == ExternalGnssConnectionPhase.Failed }?.let { message -> ... }
 ```
-The `!phoneGpsAvailable` branch is checked unconditionally before the `ExternalGnss` branch, so on a platform where Phone GPS is unavailable but External GNSS is available and actively selected, the user would see "Phone GPS is not wired on this platform yet" instead of the intended `externalGnssUnvalidatedNote`. On Android today `phoneGpsAvailable` is always true (a `phoneGpsProvider` is always constructed in `MainActivity`), so this is currently unreachable in production, but it is a real ordering bug that will surface the moment a platform ships External GNSS without Phone GPS.
-**Fix:** Reorder so mode-specific notes take priority over generic platform-unavailability notes, or scope the `!phoneGpsAvailable` check to only apply when the effective/selected mode is actually `PhoneGps`.
+but nothing in the production code path ever sets `ExternalGnssConnectionState.message` to a non-null value. `ExternalGnssLocationProvider.handlePhase()` only ever does `_connectionState.value.copy(phase = phase)`, and `AndroidExternalGnssBleClient`'s `reportPhase()` only ever carries a phase, never a message string. `message` therefore stays at its `null` default for the lifetime of the app, and this UI branch can never render anything — it's effectively dead code today. (Contrast with `GlassesConnectionState.Error.message`, which the same file does populate and display, at `SettingsScreen.kt:366-374`.) This isn't a functional break — the static `externalGnssConnectionFailed` label already gives the user actionable guidance — but it's a latent gap that could mask itself as "the message plumbing already works" to a future reader/implementer wiring in more specific failure reasons.
+**Fix:** Either wire a real failure reason through (e.g. have `AndroidExternalGnssBleClient` report a short reason string alongside `Failed`, distinguishing "no permission" / "adapter off" / "scan failed" / "GATT error"), or remove the unreachable UI branch until that plumbing exists, so the code doesn't imply capability that isn't there.
 
-### IN-02: Manifest comment overstates how narrowly the BLE scan is filtered
+### IN-02: Manifest comment overstates how narrowly the BLE scan is filtered (carryforward from prior review's IN-02, unfixed)
 
-**File:** `androidApp/src/main/AndroidManifest.xml:15-18`, `androidApp/src/main/kotlin/com/huanfuli/lapsight/ExternalGnssBleClient.kt:194-200`
-**Issue:** The manifest comment for `BLUETOOTH_SCAN`/`neverForLocation` states "the scan only looks for a device by name/address," implying an OS-level filtered scan. In practice `startScanInternal()` calls `scanner.startScan(emptyList(), ...)` — an empty filter list, i.e. an unfiltered scan that returns *every* nearby BLE advertisement — and the name/address matching happens only afterward in `scanCallback.onScanResult`. The `neverForLocation` accuracy claim itself still holds (filtering-by-name-in-callback doesn't use location either way), but the comment inaccurately describes the scan as filtered at the API level, which could mislead a future reader into thinking OS-level ScanFilters are already in place.
-**Fix:** Either add actual `ScanFilter`s (by device name prefix / address) to `startScan()` for tighter, more battery-friendly scanning, or correct the comment to say filtering happens in the app-level callback rather than via the scan API.
+**File:** `androidApp/src/main/AndroidManifest.xml:15-18`; `androidApp/src/main/kotlin/com/huanfuli/lapsight/ExternalGnssBleClient.kt:194-200`
+**Issue:** Still present exactly as previously reported. The manifest comment for `BLUETOOTH_SCAN`/`neverForLocation` states "the scan only looks for a device by name/address," but `startScanInternal()` calls `scanner.startScan(emptyList(), ...)` — an unfiltered scan that returns every nearby BLE advertisement — with name/address matching happening only afterward in `scanCallback.onScanResult`. The `neverForLocation` accuracy claim itself still holds, but the comment inaccurately implies OS-level `ScanFilter`s are already in place.
+**Fix:** Either add real `ScanFilter`s (by device name prefix / address) to `startScan()`, or correct the comment to say filtering happens in the app-level callback.
 
 ---
 
-_Reviewed: 2026-07-07T22:40:36Z_
+_Reviewed: 2026-07-08T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
