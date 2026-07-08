@@ -1,5 +1,10 @@
 package com.huanfuli.lapsight.shared.external
 
+// NMEA sentences are <=82 characters per the standard; 4096 tolerates dozens of concatenated
+// unterminated fragments before the buffer is reset, bounding memory growth from a
+// malfunctioning or malicious peripheral that never sends \r/\n (WR-03).
+private const val MAX_BUFFERED_NMEA_CHARS = 4_096
+
 class Nmea0183Parser {
 
     private val streamBuffer = StringBuilder()
@@ -11,6 +16,9 @@ class Nmea0183Parser {
 
     fun accept(text: String): List<Nmea0183ParseResult> {
         streamBuffer.append(text)
+        if (streamBuffer.length > MAX_BUFFERED_NMEA_CHARS) {
+            streamBuffer.clear()
+        }
         val results = mutableListOf<Nmea0183ParseResult>()
 
         while (true) {
@@ -245,7 +253,9 @@ class Nmea0183Parser {
                     fixType = if (currentFix.isValid) currentFix.fixType else ExternalGnssFixType.NoFix,
                     satellitesInUse = currentFix.satellitesInUse,
                     hdop = currentFix.hdop,
-                    horizontalAccuracyMeters = currentFix.hdop,
+                    // HDOP is a unitless dilution-of-precision multiplier, not a meters accuracy
+                    // figure; no parsed NMEA sentence here carries a real accuracy-in-meters field.
+                    horizontalAccuracyMeters = null,
                 ),
                 source = ExternalGnssSourceMetadata(
                     protocol = ExternalGnssProtocol.Nmea0183,
