@@ -87,6 +87,7 @@ _Note: Task 2 used tdd="true" as specified in the plan — RED test commit prece
 ## Decisions Made
 - Followed the plan's explicit interface contract exactly: no codebase exploration was needed for the `ExternalGnssConnectionState`/`ExternalGnssConnectionPhase` shape, matching what was read in `ExternalGnssModels.kt`.
 - No new interactive device-management/connect-forget flow was added — this plan implements only the read-only live status half of the UI-SPEC connectivity contract, per the plan's explicit scope decision.
+- Did not check off `EXT-01`/`EXT-02` in `REQUIREMENTS.md`: those v2 entries are plain `- **EXT-0N**:` bullets (no `- [ ]` checkbox, unlike v1 requirements), and 06-01/06-02/06-04 already established the same decision — checking them off would overclaim a hardware-validated external receiver connection, which this UI-only gap-closure plan does not deliver. `requirements-completed` in this file's frontmatter exists for dependency-graph traceability only, mirroring the precedent documented in `06-04-SUMMARY.md`.
 
 ## Deviations from Plan
 
