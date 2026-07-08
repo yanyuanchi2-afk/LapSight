@@ -107,3 +107,7 @@ None - no external service configuration required.
 ---
 *Phase: 06-external-gnss-and-sensor-ingestion*
 *Completed: 2026-07-08*
+
+## Self-Check: PASSED
+
+All created/modified files and all 4 task/summary commit hashes (`b254fb3`, `f5ad403`, `846a8a3`, `1c4fa0e`) verified present.
