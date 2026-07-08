@@ -68,7 +68,7 @@ The current recommended app stack is Kotlin Multiplatform plus Compose Multiplat
 | Use LapSight as project name | Short, product-like, and compatible with future MR/HUD positioning. | — Pending availability checks |
 | Prefer Kotlin Multiplatform + Compose Multiplatform | KMP shares domain logic across Android/iOS while retaining native access; CMP can share UI for the dash-heavy app. | — Pending implementation spike |
 | Build a clean-room lap engine | Avoid GPL contamination and keep algorithmic behavior testable. | — Pending implementation |
-| Treat external GNSS as v2 capability | Phone GPS validates product flow; high-accuracy timing can be added via BLE/TCP/NMEA later. | — Pending user testing |
+| Treat external GNSS as v2 capability | Phone GPS validates product flow; high-accuracy timing can be added via BLE/TCP/NMEA later. | Phase 6 complete: RaceBox + NMEA parsing, replay pipeline, and Settings connection-status UI shipped protocol-complete. Remains hardware-unvalidated — real receiver testing still pending. |
 
 ## Evolution
 
@@ -88,4 +88,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-06-25 after initialization*
+*Last updated: 2026-07-08 after Phase 6 (External GNSS and Sensor Ingestion) completion*
