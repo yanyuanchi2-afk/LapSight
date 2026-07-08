@@ -93,6 +93,25 @@ class RaceBoxFrameParserTest {
     }
 
     @Test
+    fun fragmentedInputSplitExactlyAtSyncBoundaryStillDecodes() {
+        val first = RaceBoxFrameBuilder.liveFix(iTowMillis = 1_000L, latitudeDegrees = 39.0)
+        val second = RaceBoxFrameBuilder.liveFix(iTowMillis = 1_040L, latitudeDegrees = 39.0001)
+        val burst = first + second
+
+        val whole = RaceBoxFrameParser().accept(burst).snapshots()
+        val parser = RaceBoxFrameParser()
+        val fragmented = mutableListOf<RaceBoxFrameParseResult>()
+        listOf(
+            burst.copyOfRange(0, 1),
+            burst.copyOfRange(1, burst.size),
+        ).forEach { fragment ->
+            fragmented += parser.accept(fragment)
+        }
+
+        assertEquals(whole, fragmented.snapshots())
+    }
+
+    @Test
     fun burstFramesDecodeInOrderWithRateMetadata() {
         val burst = (0 until 8)
             .map { index ->
