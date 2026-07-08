@@ -5,6 +5,8 @@ class Nmea0183Parser {
     private val streamBuffer = StringBuilder()
     private var currentFix = NmeaFixAccumulator()
 
+    internal val bufferedCharCount: Int get() = streamBuffer.length
+
     fun accept(bytes: ByteArray): List<Nmea0183ParseResult> = accept(bytes.decodeToString())
 
     fun accept(text: String): List<Nmea0183ParseResult> {
