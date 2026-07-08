@@ -37,6 +37,8 @@ import com.huanfuli.lapsight.shared.OrientationController
 import com.huanfuli.lapsight.shared.PhoneGpsPermissionState
 import com.huanfuli.lapsight.shared.export.ExportShareTarget
 import com.huanfuli.lapsight.shared.export.NoOpExportShareTarget
+import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionPhase
+import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionState
 import com.huanfuli.lapsight.shared.glasses.GlassesActions
 import com.huanfuli.lapsight.shared.glasses.GlassesConnectionState
 import com.huanfuli.lapsight.shared.glasses.GlassesDeviceSummary
@@ -91,6 +93,8 @@ fun AppShell(
     simulatedGpsProvider: LocationSampleProvider,
     phoneGpsProvider: LocationSampleProvider? = null,
     externalGnssProvider: LocationSampleProvider? = null,
+    externalGnssConnectionState: StateFlow<ExternalGnssConnectionState> =
+        MutableStateFlow(ExternalGnssConnectionState(phase = ExternalGnssConnectionPhase.Disconnected)),
     phoneGpsPermission: PhoneGpsPermissionState = PhoneGpsPermissionState(),
     sessionStore: LocalSessionStore = InMemorySessionStore(),
     exportShareTarget: ExportShareTarget = NoOpExportShareTarget,
@@ -387,6 +391,7 @@ fun AppShell(
                     phoneGpsAvailable = phoneGpsProvider != null && phoneGpsPermission.isSupported,
                     phoneGpsPermissionGranted = phoneGpsPermission.isGranted,
                     externalGnssAvailable = externalGnssProvider != null,
+                    externalGnssConnectionState = externalGnssConnectionState,
                     locationFeedLocked = driveTimingActive,
                     glassesConnectionState = glassesConnectionState,
                     glassesDevices = glassesDevices,

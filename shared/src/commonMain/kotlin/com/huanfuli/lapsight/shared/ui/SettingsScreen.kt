@@ -35,6 +35,8 @@ import com.huanfuli.lapsight.shared.LanguageMode
 import com.huanfuli.lapsight.shared.LocationFeedMode
 import com.huanfuli.lapsight.shared.SpeedUnit
 import com.huanfuli.lapsight.shared.ThemeMode
+import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionPhase
+import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionState
 import com.huanfuli.lapsight.shared.glasses.GlassesActions
 import com.huanfuli.lapsight.shared.glasses.GlassesConnectionState
 import com.huanfuli.lapsight.shared.glasses.GlassesDeviceSummary
@@ -99,6 +101,30 @@ internal fun resolveEffectiveLocationFeedMode(
 }
 
 /**
+ * Resolves the source-note caption shown below the location-source selector.
+ *
+ * Priority order (IN-01 fix, 06-REVIEW.md): the External-GNSS-specific note
+ * is checked BEFORE the generic Phone-GPS-unavailable note, so a user who has
+ * selected External GNSS while Phone GPS happens to be unavailable sees the
+ * External-GNSS-specific protocol-preview note, not the generic message.
+ */
+internal fun resolveSourceNote(
+    locationFeedLocked: Boolean,
+    effectiveLocationFeedMode: LocationFeedMode,
+    phoneGpsAvailable: Boolean,
+    requestedLocationFeedMode: LocationFeedMode,
+    phoneGpsPermissionGranted: Boolean,
+    strings: LocalizedStrings,
+): String? = when {
+    locationFeedLocked -> strings.locationLockedWhileTiming
+    effectiveLocationFeedMode == LocationFeedMode.ExternalGnss -> strings.externalGnssUnvalidatedNote
+    !phoneGpsAvailable -> strings.phoneGpsUnavailable
+    requestedLocationFeedMode == LocationFeedMode.PhoneGps && !phoneGpsPermissionGranted ->
+        strings.phoneGpsPermissionRequired
+    else -> null
+}
+
+/**
  * Display and mounted-phone behavior controls. Safety copy belongs here instead
  * of competing with live telemetry on the Drive surface.
  *
@@ -111,6 +137,8 @@ internal fun SettingsScreen(
     phoneGpsAvailable: Boolean,
     phoneGpsPermissionGranted: Boolean,
     externalGnssAvailable: Boolean = false,
+    externalGnssConnectionState: StateFlow<ExternalGnssConnectionState> =
+        MutableStateFlow(ExternalGnssConnectionState(phase = ExternalGnssConnectionPhase.Disconnected)),
     locationFeedLocked: Boolean,
     glassesConnectionState: StateFlow<GlassesConnectionState> =
         MutableStateFlow(GlassesConnectionState.Idle),
@@ -201,14 +229,14 @@ internal fun SettingsScreen(
                 },
                 optionEnabled = { index -> locationOptions.getOrNull(index)?.enabled == true },
             )
-            val sourceNote = when {
-                locationFeedLocked -> s.locationLockedWhileTiming
-                !phoneGpsAvailable -> s.phoneGpsUnavailable
-                settings.locationFeedMode == LocationFeedMode.PhoneGps && !phoneGpsPermissionGranted ->
-                    s.phoneGpsPermissionRequired
-                effectiveLocationFeedMode == LocationFeedMode.ExternalGnss -> s.externalGnssUnvalidatedNote
-                else -> null
-            }
+            val sourceNote = resolveSourceNote(
+                locationFeedLocked = locationFeedLocked,
+                effectiveLocationFeedMode = effectiveLocationFeedMode,
+                phoneGpsAvailable = phoneGpsAvailable,
+                requestedLocationFeedMode = settings.locationFeedMode,
+                phoneGpsPermissionGranted = phoneGpsPermissionGranted,
+                strings = s,
+            )
             sourceNote?.let {
                 Text(
                     text = it,
@@ -262,6 +290,10 @@ internal fun SettingsScreen(
             selectedDeviceId = glassesSelectedDeviceId,
             actions = glassesActions,
         )
+
+        if (externalGnssAvailable) {
+            ExternalGnssSettingsCard(connectionState = externalGnssConnectionState)
+        }
 
         LapCard(title = s.whileTiming) {
             LapSwitchRow(
@@ -388,6 +420,31 @@ private fun GlassesSettingsCard(
 }
 
 @Composable
+private fun ExternalGnssSettingsCard(
+    connectionState: StateFlow<ExternalGnssConnectionState>,
+) {
+    val state by connectionState.collectAsState()
+    val s = strings
+
+    LapCard(title = s.externalGnss) {
+        Text(
+            text = s.externalGnssConnectionLabel(state.phase),
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        state.message.takeIf { state.phase == ExternalGnssConnectionPhase.Failed }?.let { message ->
+            Text(
+                text = message,
+                color = LapSightTheme.colors.statusCaution,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
 private fun GlassesDeviceRow(
     device: GlassesDeviceSummary,
     selected: Boolean,
@@ -461,6 +518,15 @@ private fun LocalizedStrings.glassesConnectionLabel(state: GlassesConnectionStat
     GlassesConnectionState.Connected -> glassesConnected
     is GlassesConnectionState.Reconnecting -> glassesReconnecting
     is GlassesConnectionState.Error -> state.message
+}
+
+internal fun LocalizedStrings.externalGnssConnectionLabel(phase: ExternalGnssConnectionPhase): String = when (phase) {
+    ExternalGnssConnectionPhase.Disconnected -> externalGnssDisconnected
+    ExternalGnssConnectionPhase.Scanning -> externalGnssScanning
+    ExternalGnssConnectionPhase.Connecting -> externalGnssConnecting
+    ExternalGnssConnectionPhase.Connected -> externalGnssConnected
+    ExternalGnssConnectionPhase.Reconnecting -> externalGnssReconnecting
+    ExternalGnssConnectionPhase.Failed -> externalGnssConnectionFailed
 }
 
 @Composable
