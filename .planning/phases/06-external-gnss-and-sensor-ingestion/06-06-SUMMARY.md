@@ -126,3 +126,7 @@ None - no external service configuration required.
 ---
 *Phase: 06-external-gnss-and-sensor-ingestion*
 *Completed: 2026-07-08*
+
+## Self-Check: PASSED
+
+All 6 modified/created files confirmed present on disk; all 6 referenced commit hashes (c74d7b7, 015f31c, a1073ef, e492362, 218b384, 49b6ee8) confirmed present in `git log --oneline --all`.
