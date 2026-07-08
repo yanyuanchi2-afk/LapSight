@@ -456,7 +456,7 @@ Plans:
 **Requirements:** EXT-01, EXT-02, EXT-03
 **Planning Gate:** Approved for execution on 2026-07-07; see `06-VALIDATION.md` and `06-PLAN-REVIEW.md`.
 
-**Plans:** 4/4 plans complete; 2 gap-closure plans added after 06-VERIFICATION.md found the connection-status UI gap (Success Criterion 4)
+**Plans:** 6/6 plans complete
 
 Plans:
 
@@ -478,8 +478,8 @@ Plans:
 
 **Gap closure (Wave 1, parallel, after 06-VERIFICATION.md)**
 
-- [ ] 06-05-PLAN.md - Wire ExternalGnssLocationProvider.connectionState into Settings UI (closes Success Criterion 4) + IN-01 fix
-- [ ] 06-06-PLAN.md - Fix CR-01 (RaceBox sync-byte-split data loss) and WR-03/WR-04 (Nmea0183Parser buffer/accuracy bugs); document WR-01/WR-02/WR-05/IN-02 as explicitly deferred
+- [x] 06-05-PLAN.md - Wire ExternalGnssLocationProvider.connectionState into Settings UI (closes Success Criterion 4) + IN-01 fix
+- [x] 06-06-PLAN.md - Fix CR-01 (RaceBox sync-byte-split data loss) and WR-03/WR-04 (Nmea0183Parser buffer/accuracy bugs); document WR-01/WR-02/WR-05/IN-02 as explicitly deferred
 
 **Success Criteria:**
 
