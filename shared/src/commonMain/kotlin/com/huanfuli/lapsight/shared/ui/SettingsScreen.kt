@@ -35,6 +35,8 @@ import com.huanfuli.lapsight.shared.LanguageMode
 import com.huanfuli.lapsight.shared.LocationFeedMode
 import com.huanfuli.lapsight.shared.SpeedUnit
 import com.huanfuli.lapsight.shared.ThemeMode
+import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionPhase
+import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionState
 import com.huanfuli.lapsight.shared.glasses.GlassesActions
 import com.huanfuli.lapsight.shared.glasses.GlassesConnectionState
 import com.huanfuli.lapsight.shared.glasses.GlassesDeviceSummary
@@ -111,6 +113,8 @@ internal fun SettingsScreen(
     phoneGpsAvailable: Boolean,
     phoneGpsPermissionGranted: Boolean,
     externalGnssAvailable: Boolean = false,
+    externalGnssConnectionState: StateFlow<ExternalGnssConnectionState> =
+        MutableStateFlow(ExternalGnssConnectionState(phase = ExternalGnssConnectionPhase.Disconnected)),
     locationFeedLocked: Boolean,
     glassesConnectionState: StateFlow<GlassesConnectionState> =
         MutableStateFlow(GlassesConnectionState.Idle),

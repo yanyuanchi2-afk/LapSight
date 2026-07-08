@@ -9,6 +9,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
 import com.huanfuli.lapsight.shared.export.ExportShareTarget
 import com.huanfuli.lapsight.shared.export.NoOpExportShareTarget
+import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionPhase
+import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionState
 import com.huanfuli.lapsight.shared.fixtures.GpsFixtureLibrary
 import com.huanfuli.lapsight.shared.glasses.GlassesActions
 import com.huanfuli.lapsight.shared.glasses.GlassesConnectionState
@@ -52,6 +54,8 @@ fun App(
     displaySettingsStore: DisplaySettingsStore = InMemoryDisplaySettingsStore(),
     phoneGpsProvider: LocationSampleProvider? = null,
     externalGnssProvider: LocationSampleProvider? = null,
+    externalGnssConnectionState: StateFlow<ExternalGnssConnectionState> =
+        MutableStateFlow(ExternalGnssConnectionState(phase = ExternalGnssConnectionPhase.Disconnected)),
     phoneGpsPermission: PhoneGpsPermissionState = PhoneGpsPermissionState(),
     sessionStore: LocalSessionStore = InMemorySessionStore(),
     exportShareTarget: ExportShareTarget = NoOpExportShareTarget,
@@ -90,6 +94,7 @@ fun App(
                 simulatedGpsProvider = simulatedGpsProvider,
                 phoneGpsProvider = phoneGpsProvider,
                 externalGnssProvider = externalGnssProvider,
+                externalGnssConnectionState = externalGnssConnectionState,
                 phoneGpsPermission = phoneGpsPermission,
                 sessionStore = sessionStore,
                 exportShareTarget = exportShareTarget,

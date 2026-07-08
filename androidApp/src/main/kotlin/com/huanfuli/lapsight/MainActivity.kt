@@ -238,6 +238,7 @@ class MainActivity : ComponentActivity() {
                 displaySettingsStore = displaySettingsStore,
                 phoneGpsProvider = phoneGpsProvider,
                 externalGnssProvider = externalGnssProvider,
+                externalGnssConnectionState = externalGnssProvider!!.connectionState,
                 phoneGpsPermission = PhoneGpsPermissionState(
                     isSupported = true,
                     isGranted = fineLocationPermissionGranted.value,
