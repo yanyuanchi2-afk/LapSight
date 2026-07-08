@@ -1,6 +1,7 @@
 package com.huanfuli.lapsight.shared.ui
 
 import com.huanfuli.lapsight.shared.LocationFeedMode
+import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionPhase
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -95,5 +96,31 @@ class ExternalGnssSettingsTest {
         )
         assertFalse(options.single { it.mode == LocationFeedMode.PhoneGps }.enabled)
         assertTrue(options.single { it.mode == LocationFeedMode.ExternalGnss }.enabled)
+    }
+
+    @Test
+    fun externalGnssConnectionLabelCoversAllPhases() {
+        assertEquals(StringsEn.externalGnssDisconnected, StringsEn.externalGnssConnectionLabel(ExternalGnssConnectionPhase.Disconnected))
+        assertEquals(StringsEn.externalGnssScanning, StringsEn.externalGnssConnectionLabel(ExternalGnssConnectionPhase.Scanning))
+        assertEquals(StringsEn.externalGnssConnecting, StringsEn.externalGnssConnectionLabel(ExternalGnssConnectionPhase.Connecting))
+        assertEquals(StringsEn.externalGnssConnected, StringsEn.externalGnssConnectionLabel(ExternalGnssConnectionPhase.Connected))
+        assertEquals(StringsEn.externalGnssReconnecting, StringsEn.externalGnssConnectionLabel(ExternalGnssConnectionPhase.Reconnecting))
+        assertEquals(StringsEn.externalGnssConnectionFailed, StringsEn.externalGnssConnectionLabel(ExternalGnssConnectionPhase.Failed))
+    }
+
+    @Test
+    fun resolveSourceNotePrefersExternalGnssNoteOverGenericPhoneGpsUnavailable() {
+        // IN-01 regression: when External GNSS is the effective mode and Phone
+        // GPS happens to be unavailable, the External-GNSS-specific note must
+        // win, not the generic Phone-GPS-not-wired message.
+        val note = resolveSourceNote(
+            locationFeedLocked = false,
+            effectiveLocationFeedMode = LocationFeedMode.ExternalGnss,
+            phoneGpsAvailable = false,
+            requestedLocationFeedMode = LocationFeedMode.ExternalGnss,
+            phoneGpsPermissionGranted = false,
+            strings = StringsEn,
+        )
+        assertEquals(StringsEn.externalGnssUnvalidatedNote, note)
     }
 }
