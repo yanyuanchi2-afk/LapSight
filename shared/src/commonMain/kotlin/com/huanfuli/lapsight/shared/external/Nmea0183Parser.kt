@@ -35,7 +35,7 @@ class Nmea0183Parser {
             } else {
                 lineEnd + 1
             }
-            streamBuffer.delete(0, consumeCount)
+            streamBuffer.deleteRange(0, consumeCount)
             parseSentence(sentence).let { result ->
                 if (result !is Nmea0183ParseResult.Ignored || result.reason != Nmea0183IgnoredReason.Empty) {
                     results += result
