@@ -1,0 +1,38 @@
+:root {
+  --color-bg: #edf3f7;
+  --color-surface: #ffffff;
+  --color-surface-soft: #f4f7fa;
+  --color-border: #c9d5df;
+  --color-text: #17222d;
+  --color-text-muted: #5f7182;
+  --color-primary: #07859b;
+  --color-primary-hover: #056d80;
+  --color-primary-soft: #dceff3;
+  --color-accent: #ef9f35;
+  --color-danger: #b54848;
+  --color-success: #167c60;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", monospace;
+  --text-xs: 0.72rem;
+  --text-sm: 0.84rem;
+  --text-base: 0.96rem;
+  --text-lg: 1.08rem;
+  --text-xl: 1.28rem;
+  --text-2xl: 1.55rem;
+  --text-3xl: 2rem;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --radius-sm: 8px;
+  --radius-md: 13px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+  --shadow-sm: 0 2px 8px rgba(29, 49, 65, 0.08);
+  --shadow-md: 0 10px 30px rgba(29, 49, 65, 0.14);
+  --shadow-lg: 0 24px 64px rgba(29, 49, 65, 0.2);
+}

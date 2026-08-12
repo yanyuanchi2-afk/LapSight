@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LapSight · 赛道中心线框</title>
+  <link id="theme-link" rel="stylesheet" href="../themes/default.css">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; padding: 72px 24px 40px;
+      background: radial-gradient(circle at 80% 14%, rgba(7,133,155,.11), transparent 26%), var(--color-bg);
+      color: var(--color-text); font-family: var(--font-sans);
+    }
+    button, input { font: inherit; }
+    button { transition: all .15s ease; }
+    button:hover { transform: translateY(-1px); }
+    #variant-nav {
+      position: fixed; inset: 0 0 auto; z-index: 100;
+      min-height: 54px; padding: 8px 16px; display:flex; align-items:center; justify-content:center; gap:8px;
+      background:rgba(255,255,255,.92); backdrop-filter:blur(14px); border-bottom:1px solid var(--color-border);
+    }
+    .variant-tab {
+      border:1px solid var(--color-border); border-radius:999px; padding:8px 14px;
+      background:white; color:var(--color-text-muted); font-weight:800; cursor:pointer;
+    }
+    .variant-tab.active { background:var(--color-primary); border-color:var(--color-primary); color:white; }
+    .variant { display:none; }
+    .variant.active { display:block; }
+    .stage { display:grid; place-items:center; }
+    .phone {
+      width:390px; height:844px; border:8px solid #111a22; border-radius:46px; overflow:hidden;
+      background:var(--color-surface-soft); box-shadow:var(--shadow-lg); position:relative;
+    }
+    .status-line { height:31px; padding:8px 18px 0; display:flex; justify-content:space-between; font-size:11px; font-weight:800; }
+    .appbar { height:58px; padding:7px 14px 9px; display:grid; grid-template-columns:42px 1fr 42px; align-items:center; background:white; border-bottom:1px solid var(--color-border); }
+    .appbar h1 { margin:0; text-align:center; font-size:20px; }
+    .icon-btn { width:38px; height:38px; border:0; background:transparent; border-radius:11px; cursor:pointer; font-size:22px; color:var(--color-text); }
+    .icon-btn:hover { background:var(--color-primary-soft); color:var(--color-primary); }
+    .list-body { height:calc(100% - 31px - 58px); overflow:auto; padding:14px 14px 96px; scrollbar-width:none; }
+    .list-body::-webkit-scrollbar { display:none; }
+    .section { margin-bottom:20px; }
+    .section-title { display:flex; align-items:end; justify-content:space-between; margin:0 2px 8px; }
+    .section-title h2 { margin:0; font-size:13px; letter-spacing:.04em; }
+    .section-title span { color:var(--color-text-muted); font-size:10px; }
+    .track-list { display:grid; gap:8px; }
+    .track-row {
+      width:100%; border:1px solid var(--color-border); border-radius:var(--radius-md); background:white;
+      padding:11px 11px; display:grid; grid-template-columns:42px 1fr auto; align-items:center; gap:10px;
+      text-align:left; cursor:pointer;
+    }
+    .track-row:hover { border-color:var(--color-primary); box-shadow:var(--shadow-sm); }
+    .track-row.selected { border-color:var(--color-primary); background:var(--color-primary-soft); }
+    .track-shape { width:40px; height:30px; border:4px solid #33424f; border-radius:50% 42% 46% 38%; transform:rotate(-10deg); }
+    .track-copy { min-width:0; }
+    .track-copy b { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; }
+    .track-copy span { display:block; margin-top:4px; color:var(--color-text-muted); font-size:10px; }
+    .row-tail { color:var(--color-primary); font-size:11px; font-weight:900; }
+    .bottom-action {
+      position:absolute; z-index:5; left:14px; right:14px; bottom:16px; min-height:58px;
+      border:0; border-radius:var(--radius-md); background:var(--color-primary); color:white; cursor:pointer;
+      font-weight:900; box-shadow:0 10px 24px rgba(7,133,155,.28);
+    }
+    .bottom-action:hover { background:var(--color-primary-hover); }
+    .menu {
+      display:none; position:absolute; z-index:12; right:14px; top:83px; width:220px;
+      background:white; border:1px solid var(--color-border); border-radius:14px; padding:7px; box-shadow:var(--shadow-md);
+    }
+    .menu.open { display:grid; }
+    .menu button { border:0; background:white; border-radius:9px; padding:11px; text-align:left; cursor:pointer; font-weight:700; }
+    .menu button:hover { background:var(--color-primary-soft); color:var(--color-primary); }
+    .search-page {
+      display:none; position:absolute; inset:31px 0 0; z-index:20; background:var(--color-surface-soft);
+    }
+    .search-page.open { display:block; }
+    .search-head { height:64px; display:flex; align-items:center; gap:9px; padding:10px 14px; background:white; border-bottom:1px solid var(--color-border); }
+    .search-head input { min-width:0; flex:1; border:1px solid var(--color-border); border-radius:12px; padding:10px 12px; outline:none; background:var(--color-surface-soft); }
+    .search-head input:focus { border-color:var(--color-primary); box-shadow:0 0 0 3px var(--color-primary-soft); }
+    .search-results { padding:14px; display:grid; gap:8px; }
+    .search-hint { color:var(--color-text-muted); text-align:center; padding:35px 24px; font-size:12px; }
+    .toast {
+      position:absolute; left:50%; bottom:88px; z-index:30; transform:translate(-50%, 12px);
+      padding:9px 13px; border-radius:999px; background:#17222d; color:white; font-size:11px;
+      opacity:0; pointer-events:none; transition:all .2s ease;
+    }
+    .toast.show { opacity:1; transform:translate(-50%, 0); }
+    .variant-b .list-body { padding-top:10px; }
+    .rank-summary { display:none; }
+    .variant-b .rank-summary {
+      display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; padding:11px 12px;
+      border-radius:var(--radius-md); background:#17222d; color:white;
+    }
+    .variant-b .rank-summary b { font-size:13px; }
+    .variant-b .rank-summary span { color:#b8c8d4; font-size:10px; }
+    .variant-b .section { margin:0; }
+    .variant-b .section-title { display:none; }
+    .variant-b .track-list { gap:0; border:1px solid var(--color-border); border-radius:16px; overflow:hidden; }
+    .variant-b .track-row { border:0; border-bottom:1px solid var(--color-border); border-radius:0; }
+    .variant-b .track-row:last-child { border-bottom:0; }
+    .variant-b .bottom-action { top:101px; bottom:auto; min-height:46px; background:white; color:var(--color-primary); border:1px solid var(--color-primary); box-shadow:none; }
+    .variant-b .list-body { padding-top:70px; }
+    .recent-cards { display:none; }
+    .variant-c .recent-default { display:none; }
+    .variant-c .recent-cards { display:flex; gap:9px; overflow:auto; padding-bottom:3px; }
+    .recent-card {
+      flex:0 0 212px; min-height:116px; border:1px solid var(--color-border); border-radius:17px;
+      padding:13px; background:#17222d; color:white; cursor:pointer; text-align:left;
+    }
+    .recent-card span { display:block; margin-top:22px; color:#b8c8d4; font-size:10px; }
+    .recent-card b { display:block; margin-top:5px; font-size:14px; }
+    .variant-c .nearby .track-row { grid-template-columns:34px 1fr auto; padding:9px 10px; }
+    .variant-c .nearby .track-shape { width:30px; height:22px; border-width:3px; }
+    .variant-note { margin:14px auto 0; max-width:600px; text-align:center; color:var(--color-text-muted); font-size:12px; }
+    #sketch-tools {
+      position:fixed; right:12px; bottom:12px; z-index:9999; opacity:.45; transition:opacity .2s;
+      padding:8px 10px; border-radius:8px; background:rgba(0,0,0,.76); color:white; font:12px system-ui;
+    }
+    #sketch-tools:hover { opacity:1; }
+    #sketch-tools button { border:0; border-radius:5px; padding:5px 7px; cursor:pointer; }
+    @media(max-width:520px) {
+      body { padding:66px 0 20px; }
+      .phone { width:100vw; height:calc(100vh - 66px); border:0; border-radius:0; }
+      #variant-nav { justify-content:flex-start; overflow:auto; }
+      .variant-note { padding:0 14px; }
+    }
+  </style>
+</head>
+<body>
+  <nav id="variant-nav">
+    <button class="variant-tab active" data-variant="a">A · 分区工具页 ★ 已选</button>
+    <button class="variant-tab" data-variant="b">B · 相关性排序</button>
+    <button class="variant-tab" data-variant="c">C · 最近优先</button>
+  </nav>
+  <main>
+    <section id="variant-a" class="variant active"><div class="stage"></div><p class="variant-note">推荐基线：最近与附近职责明确，搜索固定在底部拇指区，新建赛道藏在菜单中。</p></section>
+    <section id="variant-b" class="variant"><div class="stage"></div><p class="variant-note">把所有候选按“现在最可能使用”统一排序，信息密度高，但会弱化最近/附近的可解释性。</p></section>
+    <section id="variant-c" class="variant"><div class="stage"></div><p class="variant-note">强化最快复用最近赛道的路径；视觉更丰富，但横向卡片会增加一次滚动模式。</p></section>
+  </main>
+
+  <template id="phone-template">
+    <div class="phone">
+      <div class="status-line"><span>9:41</span><span>● ● ●　100%</span></div>
+      <header class="appbar">
+        <button class="icon-btn" title="返回">‹</button>
+        <h1>赛道中心</h1>
+        <button class="icon-btn more" title="更多">•••</button>
+      </header>
+      <div class="list-body">
+        <div class="rank-summary"><b>为你排序</b><span>最近使用 + 当前距离</span></div>
+        <section class="section">
+          <div class="section-title"><h2>最近使用</h2><span>最多 3 个</span></div>
+          <div class="recent-cards">
+            <button class="recent-card" data-name="New Castle Motorsports Park"><span>12 分钟前 · 4.2 km</span><b>New Castle Motorsports Park</b></button>
+            <button class="recent-card" data-name="Whiteland Raceway Park"><span>6 天前 · 54 km</span><b>Whiteland Raceway Park</b></button>
+          </div>
+          <div class="track-list recent-default">
+            <button class="track-row selected" data-name="New Castle Motorsports Park">
+              <i class="track-shape"></i><span class="track-copy"><b>New Castle Motorsports Park</b><span>12 分钟前 · 正向</span></span><span class="row-tail">当前 ✓</span>
+            </button>
+            <button class="track-row" data-name="Whiteland Raceway Park">
+              <i class="track-shape"></i><span class="track-copy"><b>Whiteland Raceway Park</b><span>6 天前 · 正向</span></span><span class="row-tail">›</span>
+            </button>
+          </div>
+        </section>
+        <section class="section nearby">
+          <div class="section-title"><h2>附近赛道</h2><span>按距离</span></div>
+          <div class="track-list">
+            <button class="track-row" data-name="New Castle Motorsports Park">
+              <i class="track-shape"></i><span class="track-copy"><b>New Castle Motorsports Park</b><span>4.2 km · 卡丁车</span></span><span class="row-tail">›</span>
+            </button>
+            <button class="track-row" data-name="Anderson Speedway">
+              <i class="track-shape"></i><span class="track-copy"><b>Anderson Speedway</b><span>31 km · 场地驾驶</span></span><span class="row-tail">›</span>
+            </button>
+            <button class="track-row" data-name="Whiteland Raceway Park">
+              <i class="track-shape"></i><span class="track-copy"><b>Whiteland Raceway Park</b><span>54 km · 卡丁车</span></span><span class="row-tail">›</span>
+            </button>
+          </div>
+        </section>
+      </div>
+      <button class="bottom-action">⌕　搜索更多赛道</button>
+      <div class="menu">
+        <button class="new-custom">＋ 创建自定义赛道</button>
+        <button>管理已保存赛道</button>
+      </div>
+      <div class="search-page">
+        <div class="search-head"><button class="icon-btn search-back">‹</button><input type="search" placeholder="搜索城市、场地或赛道名称"></div>
+        <div class="search-results"><p class="search-hint">输入名称或地点，从公共赛道库中搜索。</p></div>
+      </div>
+      <div class="toast"></div>
+    </div>
+  </template>
+
+  <div id="sketch-tools"><button id="reset">重置状态</button></div>
+
+  <script>
+    const data = [
+      ['Indianapolis Motor Speedway', 'Indianapolis · 77 km'],
+      ['New Castle Motorsports Park', 'New Castle · 4.2 km'],
+      ['Whiteland Raceway Park', 'Whiteland · 54 km'],
+      ['Anderson Speedway', 'Anderson · 31 km']
+    ];
+    const template = document.getElementById('phone-template');
+    document.querySelectorAll('.stage').forEach((stage, index) => {
+      const phone = template.content.firstElementChild.cloneNode(true);
+      phone.classList.add(['variant-a','variant-b','variant-c'][index]);
+      if (index === 1) {
+        const recentRows = [...phone.querySelectorAll('.recent-default .track-row')];
+        const nearbyList = phone.querySelector('.nearby .track-list');
+        recentRows.reverse().forEach(row => nearbyList.prepend(row));
+        phone.querySelector('.section:first-of-type').remove();
+      }
+      stage.appendChild(phone);
+      wirePhone(phone);
+    });
+
+    function wirePhone(phone) {
+      const menu = phone.querySelector('.menu');
+      const search = phone.querySelector('.search-page');
+      const results = phone.querySelector('.search-results');
+      const input = phone.querySelector('input');
+      const toast = phone.querySelector('.toast');
+      const showToast = text => {
+        toast.textContent = text; toast.classList.add('show');
+        clearTimeout(phone.toastTimer); phone.toastTimer = setTimeout(() => toast.classList.remove('show'), 1500);
+      };
+      phone.querySelector('.more').onclick = () => menu.classList.toggle('open');
+      phone.querySelector('.new-custom').onclick = () => { menu.classList.remove('open'); showToast('进入自定义赛道创建流程'); };
+      phone.querySelector('.bottom-action').onclick = () => { search.classList.add('open'); setTimeout(() => input.focus(), 120); };
+      phone.querySelector('.search-back').onclick = () => { search.classList.remove('open'); input.value=''; render(''); };
+      phone.querySelectorAll('[data-name]').forEach(row => row.onclick = () => {
+        phone.querySelectorAll('.track-row').forEach(x => x.classList.remove('selected'));
+        if (row.classList.contains('track-row')) row.classList.add('selected');
+        showToast('已选择 · ' + row.dataset.name);
+      });
+      const render = query => {
+        const q = query.trim().toLowerCase();
+        const matches = q ? data.filter(x => x[0].toLowerCase().includes(q) || x[1].toLowerCase().includes(q)) : [];
+        results.innerHTML = matches.length ? matches.map(x =>
+          `<button class="track-row" data-result="${x[0]}"><i class="track-shape"></i><span class="track-copy"><b>${x[0]}</b><span>${x[1]}</span></span><span class="row-tail">选择</span></button>`
+        ).join('') : `<p class="search-hint">${q ? '没有匹配结果。可检查拼写或创建自定义赛道。' : '输入名称或地点，从公共赛道库中搜索。'}</p>`;
+        results.querySelectorAll('[data-result]').forEach(row => row.onclick = () => showToast('已选择 · ' + row.dataset.result));
+      };
+      input.oninput = () => render(input.value);
+      phone.resetSketch = () => { menu.classList.remove('open'); search.classList.remove('open'); input.value=''; render(''); };
+    }
+
+    document.querySelectorAll('.variant-tab').forEach(tab => tab.onclick = () => {
+      document.querySelectorAll('.variant-tab').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.variant').forEach(x => x.classList.remove('active'));
+      tab.classList.add('active'); document.getElementById('variant-' + tab.dataset.variant).classList.add('active');
+    });
+    document.getElementById('reset').onclick = () => document.querySelector('.variant.active .phone').resetSketch();
+  </script>
+</body>
+</html>

@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LapSight · 驾驶准备页线框</title>
+  <link id="theme-link" rel="stylesheet" href="../themes/default.css">
+  <style>
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0;
+      color: var(--color-text);
+      background:
+        radial-gradient(circle at 18% 12%, rgba(7,133,155,.12), transparent 28%),
+        var(--color-bg);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      padding: 72px 24px 40px;
+    }
+    button, input { font: inherit; }
+    button { transition: all .15s ease; }
+    button:hover { transform: translateY(-1px); }
+    #variant-nav {
+      position: fixed; inset: 0 0 auto 0; z-index: 100;
+      min-height: 54px; padding: 8px 16px;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: rgba(255,255,255,.92); backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .variant-tab {
+      border: 1px solid var(--color-border); background: var(--color-surface);
+      color: var(--color-text-muted); border-radius: var(--radius-full);
+      padding: 8px 14px; cursor: pointer; font-weight: 700;
+    }
+    .variant-tab.active { color: white; background: var(--color-primary); border-color: var(--color-primary); }
+    .variant { display: none; }
+    .variant.active { display: block; }
+    .stage { display: grid; place-items: center; }
+    .phone {
+      width: 390px; height: 844px; position: relative; overflow: hidden;
+      background: var(--color-surface-soft);
+      border: 8px solid #111a22; border-radius: 46px;
+      box-shadow: var(--shadow-lg);
+      transition: width .25s ease, height .25s ease;
+    }
+    .phone.landscape { width: min(780px, calc(100vw - 48px)); height: 390px; border-radius: 34px; }
+    .screen { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+    .status-line {
+      height: 31px; flex: 0 0 auto; padding: 8px 18px 0;
+      display: flex; justify-content: space-between; font-size: 11px; font-weight: 800;
+      color: #15212b;
+    }
+    .content {
+      min-height: 0; flex: 1; display: flex; flex-direction: column;
+      gap: 10px; padding: 8px 14px 10px; overflow: hidden;
+    }
+    .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .metric {
+      min-width: 0; padding: 9px 6px 8px; text-align: center;
+      background: var(--color-surface); border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+    }
+    .metric strong { display: block; font: 700 17px/1.1 var(--font-mono); }
+    .metric span { display: block; margin-top: 4px; color: var(--color-text-muted); font-size: 9px; letter-spacing: .04em; }
+    .track-entry {
+      width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      background: var(--color-surface); padding: 10px 13px; cursor: pointer;
+      display: flex; align-items: center; gap: 10px; text-align: left;
+    }
+    .track-entry:hover { border-color: var(--color-primary); box-shadow: var(--shadow-sm); }
+    .track-copy { min-width: 0; flex: 1; }
+    .eyebrow { color: var(--color-text-muted); font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+    .track-name { margin-top: 3px; font-size: 17px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .track-action { color: var(--color-primary); font-size: 12px; font-weight: 800; }
+    .map {
+      position: relative; min-height: 170px; flex: 1; overflow: hidden;
+      background: #e5ebeb; border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+      cursor: grab; touch-action: none; isolation: isolate;
+    }
+    .map:active { cursor: grabbing; }
+    .map-grid, .roads, .course, .accuracy, .position { position: absolute; pointer-events: none; }
+    .map-grid {
+      inset: -80px; opacity: .4;
+      background-image:
+        linear-gradient(rgba(87,110,118,.14) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(87,110,118,.14) 1px, transparent 1px);
+      background-size: 32px 32px;
+      transform: translate(var(--pan-x, 0), var(--pan-y, 0));
+    }
+    .roads { inset: -50px; transform: translate(var(--pan-x, 0), var(--pan-y, 0)); }
+    .road { position: absolute; height: 11px; border: 2px solid #fff; border-radius: 999px; background: #ced8d8; box-shadow: 0 0 0 1px #bdcaca; }
+    .r1 { width: 410px; top: 93px; left: -18px; transform: rotate(-13deg); }
+    .r2 { width: 310px; top: 130px; left: 83px; transform: rotate(54deg); }
+    .r3 { width: 250px; top: 34px; left: 118px; transform: rotate(10deg); }
+    .accuracy {
+      width: 76px; height: 76px; left: calc(50% - 38px); top: calc(50% - 38px);
+      border-radius: 50%; background: rgba(7,133,155,.12); border: 1px solid rgba(7,133,155,.34);
+    }
+    .position {
+      width: 18px; height: 18px; left: calc(50% - 9px); top: calc(50% - 9px);
+      border-radius: 50% 50% 50% 3px; transform: rotate(-45deg);
+      background: var(--color-primary); border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,.28);
+    }
+    .course {
+      display: none; width: 156px; height: 106px; left: calc(50% - 78px); top: calc(50% - 53px);
+      border: 7px solid rgba(23,34,45,.88); border-radius: 55% 42% 48% 44%;
+      transform: rotate(-12deg); box-shadow: inset 0 0 0 3px rgba(255,255,255,.85), 0 0 0 2px rgba(255,255,255,.85);
+    }
+    .selected .course { display: block; }
+    .selected .accuracy { width: 48px; height: 48px; left: calc(50% - 24px); top: calc(50% - 24px); }
+    .map-caption {
+      position: absolute; left: 9px; bottom: 8px; padding: 5px 8px;
+      border-radius: var(--radius-full); background: rgba(255,255,255,.88);
+      color: var(--color-text-muted); font-size: 9px; font-weight: 700;
+    }
+    .scale { position: absolute; right: 10px; bottom: 10px; width: 45px; border-bottom: 2px solid #42515e; font: 700 8px var(--font-mono); text-align: center; }
+    .controls { display: grid; gap: 8px; }
+    .row-control {
+      min-height: 42px; display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 8px 11px; border: 1px solid var(--color-border);
+      border-radius: var(--radius-md); background: var(--color-surface);
+    }
+    .row-control label { font-size: 11px; font-weight: 800; color: var(--color-text-muted); }
+    .segmented { display: flex; background: var(--color-surface-soft); padding: 3px; border-radius: 10px; }
+    .segmented button { border: 0; border-radius: 8px; padding: 6px 10px; background: transparent; color: var(--color-text-muted); cursor: pointer; font-size: 10px; font-weight: 800; }
+    .segmented button.on { color: white; background: var(--color-primary); }
+    .glasses { display: none; }
+    .paired .glasses { display: flex; }
+    .actions { display: grid; grid-template-columns: 1fr 58px; gap: 8px; margin-top: auto; }
+    .primary, .rotate, .stop {
+      min-height: 56px; border: 0; border-radius: var(--radius-md); cursor: pointer; font-weight: 900;
+    }
+    .primary { background: var(--color-primary); color: white; }
+    .primary:hover { background: var(--color-primary-hover); }
+    .rotate { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); font-size: 22px; }
+    .bottom-nav {
+      height: 68px; flex: 0 0 auto; border-top: 1px solid var(--color-border); background: rgba(255,255,255,.95);
+      display: grid; grid-template-columns: repeat(3,1fr); padding: 6px 12px 10px;
+    }
+    .bottom-nav button { border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; font-size: 10px; font-weight: 800; }
+    .bottom-nav button.active { color: var(--color-primary); }
+    .bottom-nav b { display: block; font-size: 20px; line-height: 1.3; }
+    .timing {
+      display: none; position: absolute; inset: 0; z-index: 20; padding: 44px 18px 18px;
+      background: #091118; color: white; flex-direction: column;
+    }
+    .timing.open { display: flex; }
+    .timing-top { display: flex; justify-content: space-between; align-items: center; color: #b9c8d4; font-size: 11px; font-weight: 800; }
+    .lap-now { margin-top: 52px; text-align: center; }
+    .lap-now span { display: block; color: #8fa4b4; font-size: 11px; letter-spacing: .14em; }
+    .lap-now strong { display: block; margin-top: 10px; font: 700 58px/1 var(--font-mono); }
+    .delta { margin: 24px auto 0; padding: 10px 18px; border-radius: var(--radius-full); background: rgba(22,124,96,.22); color: #72e1bc; font: 700 24px var(--font-mono); }
+    .timing-grid { margin-top: auto; display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+    .timing-cell { padding: 13px 8px; border: 1px solid #263948; border-radius: 12px; text-align: center; background: #101c25; }
+    .timing-cell span { display:block; color:#8295a5; font-size:9px; }
+    .timing-cell b { display:block; margin-top:5px; font:700 16px var(--font-mono); }
+    .stop { margin-top: 12px; background: #372024; color: #ffb9b9; border: 1px solid #6b343b; }
+    .route-preview {
+      display: none; position: absolute; inset: 0; z-index: 15; background: var(--color-surface-soft);
+      padding: 52px 16px 20px;
+    }
+    .route-preview.open { display: block; }
+    .route-preview header { display:flex; justify-content:space-between; align-items:center; }
+    .route-preview h2 { margin:0; font-size:24px; }
+    .route-preview button { border:0; background:var(--color-primary-soft); color:var(--color-primary); border-radius:10px; padding:8px 11px; cursor:pointer; font-weight:800; }
+    .route-preview section { margin-top:20px; padding:14px; border:1px solid var(--color-border); background:white; border-radius:16px; }
+    .variant-note { margin: 14px auto 0; max-width: 560px; color: var(--color-text-muted); text-align:center; font-size:12px; }
+    .variant-a .map { flex: 0 0 285px; min-height: 0; }
+    .variant-b .metric-grid { grid-template-columns: repeat(4, auto); justify-content: stretch; }
+    .variant-b .metric { padding: 7px 4px; border-radius: 10px; }
+    .variant-b .metric strong { font-size: 14px; }
+    .variant-b .map { min-height: 250px; }
+    .variant-b .track-entry { order: -1; }
+    .variant-c .content { gap: 8px; }
+    .variant-c .track-entry { border-left: 5px solid var(--color-primary); }
+    .variant-c .map { min-height: 145px; max-height: 185px; }
+    .variant-c .metric-grid { order: 3; }
+    .variant-c .metric { border: 0; background: transparent; border-right: 1px solid var(--color-border); border-radius: 0; }
+    .variant-c .metric:last-child { border-right: 0; }
+    .variant-c .controls { order: 4; }
+    .variant-c .actions { order: 5; }
+    .phone.landscape .content { display:grid; grid-template-columns:1.35fr .9fr; grid-template-rows:auto 1fr auto; gap:8px; padding:6px 12px 8px; }
+    .phone.landscape .status-line { height:26px; padding-top:6px; }
+    .phone.landscape .metric-grid { grid-column:2; grid-row:1; }
+    .phone.landscape .track-entry { grid-column:2; grid-row:2; align-self:start; }
+    .phone.landscape .map { grid-column:1; grid-row:1/4; min-height:0; }
+    .phone.landscape .controls { grid-column:2; grid-row:2; align-self:end; }
+    .phone.landscape .actions { grid-column:2; grid-row:3; }
+    .phone.landscape .bottom-nav { display:none; }
+    #sketch-tools {
+      position:fixed; bottom:12px; right:12px; z-index:9999;
+      display:flex; gap:6px; align-items:center; font:12px system-ui;
+      background:rgba(0,0,0,.76); color:white; padding:8px 10px;
+      border-radius:8px; opacity:.45; transition:opacity .2s;
+    }
+    #sketch-tools:hover { opacity:1; }
+    #sketch-tools button, #sketch-tools select { border:0; border-radius:5px; padding:5px 7px; cursor:pointer; }
+    @media (max-width: 520px) {
+      body { padding: 66px 0 24px; }
+      .phone { width: min(390px, 100vw); height: calc(100vh - 90px); border-width:0; border-radius:0; }
+      .variant-note { padding: 0 14px; }
+      #variant-nav { justify-content:flex-start; overflow:auto; }
+    }
+  </style>
+</head>
+<body>
+  <nav id="variant-nav">
+    <button class="variant-tab active" data-variant="a">A · 平衡堆栈 ★ 已选</button>
+    <button class="variant-tab" data-variant="b">B · 地图主导</button>
+    <button class="variant-tab" data-variant="c">C · 精密仪表</button>
+  </nav>
+
+  <main>
+    <section id="variant-a" class="variant active"><div class="stage"></div><p class="variant-note">稳定顺序：状态 → 赛道中心入口 → 小地图 → 条件化配置 → 状态正确的主操作。</p></section>
+    <section id="variant-b" class="variant"><div class="stage"></div><p class="variant-note">地图获得更多空间，但仍不承担赛道发现；顶部赛道横条保持独立、可预期。</p></section>
+    <section id="variant-c" class="variant"><div class="stage"></div><p class="variant-note">更接近专业仪表：赛道确认优先，状态数字压缩为一条读数带。</p></section>
+  </main>
+
+  <template id="phone-template">
+    <div class="phone">
+      <div class="screen">
+        <div class="status-line"><span>9:41</span><span>● ● ●　100%</span></div>
+        <div class="content">
+          <div class="metric-grid">
+            <div class="metric"><strong>0</strong><span>KM/H</span></div>
+            <div class="metric"><strong>4.8</strong><span>精度 M</span></div>
+            <div class="metric"><strong>1.0</strong><span>GPS HZ</span></div>
+            <div class="metric"><strong class="ready-text">就绪</strong><span>状态</span></div>
+          </div>
+          <button class="track-entry">
+            <span aria-hidden="true">◎</span>
+            <span class="track-copy">
+              <span class="eyebrow">赛道</span>
+              <span class="track-name">选择赛道</span>
+            </span>
+            <span class="track-action">赛道中心　›</span>
+          </button>
+          <div class="map" aria-label="可拖动的本地小地图">
+            <div class="map-grid"></div>
+            <div class="roads"><i class="road r1"></i><i class="road r2"></i><i class="road r3"></i></div>
+            <div class="course"></div>
+            <div class="accuracy"></div>
+            <div class="position"></div>
+            <div class="map-caption">本地范围 · 无赛道图钉</div>
+            <div class="scale">100 m</div>
+          </div>
+          <div class="controls">
+            <div class="row-control direction" hidden>
+              <label>方向</label>
+              <div class="segmented"><button class="on">正向</button><button>反向</button></div>
+            </div>
+            <div class="row-control glasses">
+              <label>眼镜</label>
+              <div class="segmented"><button class="on">关闭</button><button>Delta</button><button>专注</button></div>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="primary">选择赛道</button>
+            <button class="rotate" title="切换横竖屏">↻</button>
+          </div>
+        </div>
+        <nav class="bottom-nav">
+          <button class="active"><b>▶</b>驾驶</button>
+          <button><b>≡</b>回顾</button>
+          <button><b>⚙</b>设置</button>
+        </nav>
+      </div>
+      <div class="route-preview">
+        <header><button class="route-close">‹ 返回</button><h2>赛道中心</h2><span></span></header>
+        <section><b>最近使用</b><p>New Castle Motorsports Park · 12 分钟前</p></section>
+        <section><b>附近赛道</b><p>按当前位置距离排序，不使用地图或图钉。</p></section>
+      </div>
+      <div class="timing">
+        <div class="timing-top"><span>NEW CASTLE · 正向</span><span>GPS 1.0 Hz</span></div>
+        <div class="lap-now"><span>当前圈</span><strong>01:18.42</strong></div>
+        <div class="delta">−0.34</div>
+        <div class="timing-grid">
+          <div class="timing-cell"><span>上一圈</span><b>1:19.08</b></div>
+          <div class="timing-cell"><span>最佳</span><b>1:18.76</b></div>
+          <div class="timing-cell"><span>圈数</span><b>4</b></div>
+        </div>
+        <button class="stop">停止计时</button>
+      </div>
+    </div>
+  </template>
+
+  <div id="sketch-tools">
+    <span>状态</span>
+    <button data-state="empty">未选</button>
+    <button data-state="selected">已选</button>
+    <button data-state="paired">已选+眼镜</button>
+    <button id="portrait">竖屏</button>
+  </div>
+
+  <script>
+    const template = document.getElementById('phone-template');
+    document.querySelectorAll('.stage').forEach((stage, index) => {
+      const phone = template.content.firstElementChild.cloneNode(true);
+      phone.classList.add(['variant-a','variant-b','variant-c'][index]);
+      stage.appendChild(phone);
+      wirePhone(phone);
+    });
+
+    function wirePhone(phone) {
+      const setState = state => {
+        phone.classList.toggle('selected', state !== 'empty');
+        phone.classList.toggle('paired', state === 'paired');
+        phone.querySelector('.direction').hidden = state === 'empty';
+        phone.querySelector('.track-name').textContent = state === 'empty' ? '选择赛道' : 'New Castle Motorsports Park';
+        phone.querySelector('.primary').textContent = state === 'empty' ? '选择赛道' : '开始计时';
+        phone.querySelector('.ready-text').textContent = state === 'empty' ? '待配置' : '就绪';
+      };
+      phone.dataset.setState = '';
+      phone.setState = setState;
+      setState('empty');
+
+      phone.querySelector('.track-entry').onclick = () => phone.querySelector('.route-preview').classList.add('open');
+      phone.querySelector('.route-close').onclick = () => phone.querySelector('.route-preview').classList.remove('open');
+      phone.querySelector('.primary').onclick = () => {
+        if (!phone.classList.contains('selected')) {
+          phone.querySelector('.route-preview').classList.add('open');
+        } else {
+          phone.querySelector('.timing').classList.add('open');
+        }
+      };
+      phone.querySelector('.stop').onclick = () => phone.querySelector('.timing').classList.remove('open');
+      phone.querySelector('.rotate').onclick = () => phone.classList.toggle('landscape');
+      phone.querySelectorAll('.segmented').forEach(group => group.querySelectorAll('button').forEach(btn => {
+        btn.onclick = () => {
+          group.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+          btn.classList.add('on');
+        };
+      }));
+
+      const map = phone.querySelector('.map');
+      let dragging = false, startX = 0, startY = 0, x = 0, y = 0;
+      map.onpointerdown = e => { dragging = true; startX = e.clientX - x; startY = e.clientY - y; map.setPointerCapture(e.pointerId); };
+      map.onpointermove = e => {
+        if (!dragging) return;
+        x = Math.max(-45, Math.min(45, e.clientX - startX));
+        y = Math.max(-35, Math.min(35, e.clientY - startY));
+        map.style.setProperty('--pan-x', x + 'px');
+        map.style.setProperty('--pan-y', y + 'px');
+      };
+      map.onpointerup = () => dragging = false;
+    }
+
+    document.querySelectorAll('.variant-tab').forEach(tab => tab.onclick = () => {
+      document.querySelectorAll('.variant-tab').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.variant').forEach(x => x.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('variant-' + tab.dataset.variant).classList.add('active');
+    });
+
+    function activePhone() { return document.querySelector('.variant.active .phone'); }
+    document.querySelectorAll('#sketch-tools [data-state]').forEach(btn => btn.onclick = () => activePhone().setState(btn.dataset.state));
+    document.getElementById('portrait').onclick = e => {
+      activePhone().classList.toggle('landscape');
+      e.currentTarget.textContent = activePhone().classList.contains('landscape') ? '横屏' : '竖屏';
+    };
+  </script>
+</body>
+</html>

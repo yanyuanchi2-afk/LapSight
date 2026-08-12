@@ -1,7 +1,11 @@
 package com.huanfuli.lapsight.shared
 
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.window.ComposeUIViewController
 import com.huanfuli.lapsight.shared.storage.StoragePaths
+import platform.UIKit.UIViewController
 
 /**
  * iOS entry point.
@@ -14,9 +18,30 @@ import com.huanfuli.lapsight.shared.storage.StoragePaths
  * `StoragePaths` actual resolves the sandbox `NSDocumentDirectory` directly, so no
  * `initialize` step is needed here.
  */
-fun MainViewController() = ComposeUIViewController {
-    App(
-        displaySettingsStore = IosDisplaySettingsStore(),
-        sessionStore = StoragePaths.fileSessionStore(),
-    )
+fun MainViewController(
+    orientationController: OrientationController = NoOpOrientationController,
+): UIViewController {
+    val phoneGpsProvider = IosCoreLocationSampleProvider()
+
+    return ComposeUIViewController {
+        val permissionGranted by phoneGpsProvider.permissionGranted.collectAsState()
+
+        DisposableEffect(phoneGpsProvider) {
+            onDispose {
+                phoneGpsProvider.stop()
+            }
+        }
+
+        App(
+            orientationController = orientationController,
+            displaySettingsStore = IosDisplaySettingsStore(),
+            phoneGpsProvider = phoneGpsProvider,
+            phoneGpsPermission = PhoneGpsPermissionState(
+                isSupported = phoneGpsProvider.isSupported,
+                isGranted = permissionGranted,
+                requestPermission = phoneGpsProvider::requestPermission,
+            ),
+            sessionStore = StoragePaths.fileSessionStore(),
+        )
+    }
 }

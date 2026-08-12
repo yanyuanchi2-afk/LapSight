@@ -1,6 +1,7 @@
 package com.huanfuli.lapsight.shared.ui.drive
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
@@ -20,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -40,12 +40,14 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.huanfuli.lapsight.shared.DashOrientation
@@ -57,10 +59,11 @@ import com.huanfuli.lapsight.shared.PhoneGpsPermissionState
 import com.huanfuli.lapsight.shared.VelocityAidedGpsFilter
 import com.huanfuli.lapsight.shared.glasses.HudPage
 import com.huanfuli.lapsight.shared.glasses.NoOpGlassesActions
+import com.huanfuli.lapsight.shared.lap.GeoPoint
+import com.huanfuli.lapsight.shared.lap.LocalProjection
 import com.huanfuli.lapsight.shared.lap.formatLapTime
 import com.huanfuli.lapsight.shared.review.TraceLayer
 import com.huanfuli.lapsight.shared.review.TraceRole
-import com.huanfuli.lapsight.shared.review.buildTrackTrace
 import com.huanfuli.lapsight.shared.review.buildTrackTraceLayers
 import com.huanfuli.lapsight.shared.session.GeoPointDto
 import com.huanfuli.lapsight.shared.session.RawRecordingSnapshot
@@ -72,24 +75,18 @@ import com.huanfuli.lapsight.shared.storage.LoadResult
 import com.huanfuli.lapsight.shared.storage.LocalSessionStore
 import com.huanfuli.lapsight.shared.track.CourseDirection
 import com.huanfuli.lapsight.shared.track.CourseTopology
-import com.huanfuli.lapsight.shared.track.SectorLineDto
 import com.huanfuli.lapsight.shared.track.TrackProfile
 import com.huanfuli.lapsight.shared.ui.AddActionIcon
-import com.huanfuli.lapsight.shared.ui.CloseActionIcon
 import com.huanfuli.lapsight.shared.ui.DriveMarkingPhase
 import com.huanfuli.lapsight.shared.ui.DriveMarkingSnapshot
 import com.huanfuli.lapsight.shared.ui.LapSightTheme
 import com.huanfuli.lapsight.shared.ui.PlayActionIcon
 import com.huanfuli.lapsight.shared.ui.PointToPointCourseIcon
-import com.huanfuli.lapsight.shared.ui.ReviewTabIcon
 import com.huanfuli.lapsight.shared.ui.RotateScreenIcon
 import com.huanfuli.lapsight.shared.ui.StopActionIcon
 import com.huanfuli.lapsight.shared.ui.TracePositionMarker
 import com.huanfuli.lapsight.shared.ui.TraceView
-import com.huanfuli.lapsight.shared.ui.courseMarker
 import com.huanfuli.lapsight.shared.ui.strings
-import com.huanfuli.lapsight.shared.ui.components.LapButton
-import com.huanfuli.lapsight.shared.ui.components.LapButtonStyle
 import com.huanfuli.lapsight.shared.ui.components.LapDialog
 import com.huanfuli.lapsight.shared.ui.components.MetricCell
 import com.huanfuli.lapsight.shared.ui.components.MetricCellSize
@@ -101,9 +98,6 @@ import lapsight.shared.generated.resources.material_symbols_laps
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.jetbrains.compose.resources.painterResource
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.hypot
 
 /**
  * Stationary Drive surface host: status bar + config controls, or the
@@ -120,11 +114,9 @@ internal fun DriveSurface(
     sessionStore: LocalSessionStore,
     onToggleOrientation: () -> Unit,
     orientationToggleEnabled: Boolean,
-    onSelectProfile: (String) -> Unit,
+    onOpenTrackCenter: () -> Unit,
     onSelectDirection: (CourseDirection) -> Unit,
-    onSelectTopology: (CourseTopology) -> Unit,
     onStartTiming: () -> Unit,
-    onBeginMarking: () -> Unit,
     onStopMarking: () -> Unit,
     onToggleTimingPause: () -> Unit,
     onStopTiming: () -> Unit,
@@ -215,11 +207,9 @@ internal fun DriveSurface(
                 phoneGpsPermission = phoneGpsPermission,
                 onToggleOrientation = onToggleOrientation,
                 orientationToggleEnabled = orientationToggleEnabled,
-                onSelectProfile = onSelectProfile,
+                onOpenTrackCenter = onOpenTrackCenter,
                 onSelectDirection = onSelectDirection,
-                onSelectTopology = onSelectTopology,
                 onStartTiming = onStartTiming,
-                onBeginMarking = onBeginMarking,
                 onStopMarking = onStopMarking,
                 onStartRawRecording = onStartRawRecording,
                 onStopRawRecording = onStopRawRecording,
@@ -255,11 +245,9 @@ internal fun DriveSurface(
                     sessionStore = sessionStore,
                     onToggleOrientation = onToggleOrientation,
                     orientationToggleEnabled = orientationToggleEnabled,
-                    onSelectProfile = onSelectProfile,
+                    onOpenTrackCenter = onOpenTrackCenter,
                     onSelectDirection = onSelectDirection,
-                    onSelectTopology = onSelectTopology,
                     onStartTiming = onStartTiming,
-                    onBeginMarking = onBeginMarking,
                     onStopMarking = onStopMarking,
                     onStartRawRecording = onStartRawRecording,
                     onStopRawRecording = onStopRawRecording,
@@ -292,11 +280,9 @@ private fun LandscapeCockpit(
     phoneGpsPermission: PhoneGpsPermissionState,
     onToggleOrientation: () -> Unit,
     orientationToggleEnabled: Boolean,
-    onSelectProfile: (String) -> Unit,
+    onOpenTrackCenter: () -> Unit,
     onSelectDirection: (CourseDirection) -> Unit,
-    onSelectTopology: (CourseTopology) -> Unit,
     onStartTiming: () -> Unit,
-    onBeginMarking: () -> Unit,
     onStopMarking: () -> Unit,
     onStartRawRecording: () -> Unit,
     onStopRawRecording: () -> Unit,
@@ -307,25 +293,6 @@ private fun LandscapeCockpit(
 ) {
     val spacing = LapSightTheme.spacing
     val s = strings
-    var showTrackPicker by remember { mutableStateOf(false) }
-    var showNewTrackDialog by remember { mutableStateOf(false) }
-    if (showTrackPicker) {
-        TrackPickerDialog(
-            snapshot = snapshot,
-            onSelectProfile = onSelectProfile,
-            onBeginMarking = { showNewTrackDialog = true },
-            onClose = { showTrackPicker = false },
-        )
-    }
-    if (showNewTrackDialog) {
-        NewTrackCourseDialog(
-            selectedTopology = snapshot.selectedTopology,
-            onSelectTopology = onSelectTopology,
-            onBeginMarking = onBeginMarking,
-            onClose = { showNewTrackDialog = false },
-        )
-    }
-
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -358,25 +325,13 @@ private fun LandscapeCockpit(
                         samples = snapshot.capturedSamples,
                         modifier = previewModifier,
                     )
-                    snapshot.currentTrackName != null -> SelectedTrackPreview(
+                    else -> NearbyLocationPreview(
                         profileId = snapshot.timingReadyTrackId,
                         sessionStore = sessionStore,
                         compact = false,
                         livePosition = snapshot.latestSample,
                         fillParent = true,
                         modifier = previewModifier,
-                    )
-                    rawRecordingActive -> Text(
-                        text = s.rawGpsRecordingShort,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                    else -> NoTrackState(
-                        hasSavedTracks = snapshot.selectableProfiles.isNotEmpty(),
-                        onChooseTrack = { showTrackPicker = true },
-                        onBeginMarking = { showNewTrackDialog = true },
-                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
@@ -462,7 +417,7 @@ private fun LandscapeCockpit(
                         ) {
                             TrackSelectorSection(
                                 snapshot = snapshot,
-                                onClick = { showTrackPicker = true },
+                                onClick = onOpenTrackCenter,
                             )
                             if (snapshot.canStartTiming && snapshot.currentTrackTopology != CourseTopology.PointToPoint) {
                                 DirectionSelectorSection(
@@ -525,9 +480,6 @@ private fun MarkingMetricsRow(
         )
     }
 }
-
-/** Distance a fix must travel before the heading arrow re-aims (anti-jitter). */
-private const val HEADING_ANCHOR_METERS = 3.0
 
 /**
  * Runs the live fix stream through [VelocityAidedGpsFilter] for display.
@@ -639,15 +591,6 @@ private fun rememberSmoothedLivePosition(
     return shown
 }
 
-/** Rough planar distance between two fixes; ample for a few-meter heading gate. */
-private fun approxDistanceMeters(a: GeoPointDto, b: GeoPointDto): Double {
-    val metersPerDegLat = 111_320.0
-    val metersPerDegLon = 111_320.0 * cos(a.latitude * PI / 180.0)
-    val dLat = (b.latitude - a.latitude) * metersPerDegLat
-    val dLon = (b.longitude - a.longitude) * metersPerDegLon
-    return hypot(dLat, dLon)
-}
-
 /**
  * Live "you are here" marker from the tail of the marking trace, or null when
  * there are too few points to place it. Heading comes from a slightly older
@@ -713,11 +656,9 @@ private fun ControlPanel(
     sessionStore: LocalSessionStore,
     onToggleOrientation: () -> Unit,
     orientationToggleEnabled: Boolean,
-    onSelectProfile: (String) -> Unit,
+    onOpenTrackCenter: () -> Unit,
     onSelectDirection: (CourseDirection) -> Unit,
-    onSelectTopology: (CourseTopology) -> Unit,
     onStartTiming: () -> Unit,
-    onBeginMarking: () -> Unit,
     onStopMarking: () -> Unit,
     onStartRawRecording: () -> Unit,
     onStopRawRecording: () -> Unit,
@@ -784,49 +725,23 @@ private fun ControlPanel(
                     compact = compact,
                 )
             } else {
-                var showTrackPicker by remember { mutableStateOf(false) }
-                var showNewTrackDialog by remember { mutableStateOf(false) }
-                if (showTrackPicker) {
-                    TrackPickerDialog(
-                        snapshot = snapshot,
-                        onSelectProfile = onSelectProfile,
-                        onBeginMarking = { showNewTrackDialog = true },
-                        onClose = { showTrackPicker = false },
-                    )
-                }
-                if (showNewTrackDialog) {
-                    NewTrackCourseDialog(
-                        selectedTopology = snapshot.selectedTopology,
-                        onSelectTopology = onSelectTopology,
-                        onBeginMarking = onBeginMarking,
-                        onClose = { showNewTrackDialog = false },
-                    )
-                }
-
                 TrackSelectorSection(
                     snapshot = snapshot,
-                    onClick = { showTrackPicker = true },
+                    onClick = onOpenTrackCenter,
                     compact = compact,
                 )
-
-                if (snapshot.currentTrackName != null) {
-                    // The selected course fills the middle — the map is the reason
-                    // to glance at this screen before starting.
-                    SelectedTrackPreview(
-                        profileId = snapshot.timingReadyTrackId,
-                        sessionStore = sessionStore,
-                        compact = compact,
-                        livePosition = snapshot.latestSample,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                } else {
-                    NoTrackState(
-                        hasSavedTracks = snapshot.selectableProfiles.isNotEmpty(),
-                        onChooseTrack = { showTrackPicker = true },
-                        onBeginMarking = { showNewTrackDialog = true },
-                        modifier = if (fillHeight) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth(),
-                    )
-                }
+                NearbyLocationPreview(
+                    profileId = snapshot.timingReadyTrackId,
+                    sessionStore = sessionStore,
+                    compact = compact,
+                    livePosition = snapshot.latestSample,
+                    modifier = if (fillHeight) {
+                        Modifier.fillMaxWidth().weight(1f)
+                    } else {
+                        Modifier.fillMaxWidth()
+                    },
+                    fillParent = fillHeight,
+                )
 
                 if (snapshot.canStartTiming && snapshot.currentTrackTopology != CourseTopology.PointToPoint) {
                     DirectionSelectorSection(
@@ -911,12 +826,16 @@ private fun MarkingLiveSection(
 }
 
 /**
- * Course map of the currently selected Track (latest revision), with its
- * start/finish and sector lines — fills the pre-timing middle so the screen
- * shows what is about to be timed.
+ * Fixed nearby-location canvas for the stationary Drive page.
+ *
+ * It intentionally draws no invented roads or external tiles. Until a real
+ * basemap provider is selected, the stable few-hundred-meter viewport shows
+ * the live fix, its accuracy, a scale grid, and any selected course geometry
+ * that falls nearby. The viewport therefore remains useful and visually
+ * stable even when no Track is selected.
  */
 @Composable
-private fun SelectedTrackPreview(
+private fun NearbyLocationPreview(
     profileId: String?,
     sessionStore: LocalSessionStore,
     compact: Boolean,
@@ -924,78 +843,127 @@ private fun SelectedTrackPreview(
     modifier: Modifier = Modifier,
     fillParent: Boolean = false,
 ) {
-    if (profileId == null) return
     val profile = remember(profileId) {
-        (sessionStore.loadProfile(profileId) as? LoadResult.Loaded<TrackProfile>)?.value
+        profileId?.let {
+            (sessionStore.loadProfile(it) as? LoadResult.Loaded<TrackProfile>)?.value
+        }
     }
-    val latest = profile?.latestRevision
-    val referenceLine = latest?.referenceLine
-    if (referenceLine == null || referenceLine.points.isEmpty()) return
+    val coursePoints = remember(profileId, profile?.latestRevision?.ordinal) {
+        profile?.latestRevision?.referenceLine?.points.orEmpty()
+    }
+    val filteredPosition = rememberFilteredLivePosition("drive-nearby-map", livePosition)
+    val current = rememberSmoothedLivePosition("drive-nearby-map", filteredPosition)
+    val center = current?.let { GeoPoint(it.latitude, it.longitude) }
+    val projection = remember(center?.latitude, center?.longitude) {
+        center?.let(::LocalProjection)
+    }
+    val trackColor = MaterialTheme.colorScheme.primary
+    val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
+    val accuracyColor = LapSightTheme.colors.statusReady.copy(alpha = 0.16f)
+    val locationColor = LapSightTheme.colors.statusReady
+    val locationOutline = MaterialTheme.colorScheme.surface
+    val scaleColor = MaterialTheme.colorScheme.onSurface
+    val s = strings
 
-    val trace = remember(profileId, latest.ordinal) {
-        val finishAsLine = latest.courseSetup.finishLine?.let {
-            listOf(SectorLineDto("finish", "Finish", 999, it.pointA, it.pointB))
-        } ?: emptyList()
-        buildTrackTrace(
-            markingSamples = emptyList(),
-            referenceLine = referenceLine,
-            startFinish = latest.courseSetup.startFinish,
-            sectors = latest.courseSetup.boundaries.map {
-                SectorLineDto(id = it.id, name = "Sector ${it.order}", order = it.order, pointA = it.pointA, pointB = it.pointB)
-            } + finishAsLine,
-            outlierSamples = emptyList(),
-            viewWidth = 400.0,
-            viewHeight = 300.0,
+    val content: @Composable BoxScope.() -> Unit = {
+        Canvas(Modifier.fillMaxSize()) {
+            val pxPerMeter = minOf(size.width, size.height) / NearbyMapSpanMeters.toFloat()
+            val mapCenter = Offset(size.width / 2f, size.height / 2f)
+            val gridStepPx = NearbyMapGridMeters.toFloat() * pxPerMeter
+            var gridX = mapCenter.x % gridStepPx
+            while (gridX <= size.width) {
+                drawLine(gridColor, Offset(gridX, 0f), Offset(gridX, size.height), 1f)
+                gridX += gridStepPx
+            }
+            var gridY = mapCenter.y % gridStepPx
+            while (gridY <= size.height) {
+                drawLine(gridColor, Offset(0f, gridY), Offset(size.width, gridY), 1f)
+                gridY += gridStepPx
+            }
+
+            if (projection != null && coursePoints.size >= 2) {
+                val path = Path()
+                coursePoints.forEachIndexed { index, point ->
+                    val local = projection.toLocal(GeoPoint(point.latitude, point.longitude))
+                    val canvasPoint = Offset(
+                        x = mapCenter.x + local.x.toFloat() * pxPerMeter,
+                        y = mapCenter.y - local.y.toFloat() * pxPerMeter,
+                    )
+                    if (index == 0) path.moveTo(canvasPoint.x, canvasPoint.y)
+                    else path.lineTo(canvasPoint.x, canvasPoint.y)
+                }
+                if (profile?.latestRevision?.courseSetup?.topology == CourseTopology.Circuit) {
+                    path.close()
+                }
+                drawPath(
+                    path = path,
+                    color = locationOutline,
+                    style = Stroke(width = 11f, cap = StrokeCap.Round),
+                )
+                drawPath(
+                    path = path,
+                    color = trackColor,
+                    style = Stroke(width = 7f, cap = StrokeCap.Round),
+                )
+            }
+
+            if (center != null) {
+                val accuracyRadius = (livePosition?.horizontalAccuracyMeters ?: 0.0)
+                    .coerceAtLeast(0.0)
+                    .toFloat() * pxPerMeter
+                if (accuracyRadius > 0f) {
+                    drawCircle(
+                        color = accuracyColor,
+                        radius = accuracyRadius.coerceAtMost(size.minDimension / 2f),
+                        center = mapCenter,
+                    )
+                }
+                drawCircle(locationOutline, radius = 11f, center = mapCenter)
+                drawCircle(locationColor, radius = 8f, center = mapCenter)
+                val heading = livePosition?.headingDegrees?.toFloat()
+                if (heading != null && heading.isFinite()) {
+                    rotate(degrees = heading, pivot = mapCenter) {
+                        val arrow = Path().apply {
+                            moveTo(mapCenter.x, mapCenter.y - 18f)
+                            lineTo(mapCenter.x - 6f, mapCenter.y - 7f)
+                            lineTo(mapCenter.x + 6f, mapCenter.y - 7f)
+                            close()
+                        }
+                        drawPath(arrow, locationColor)
+                    }
+                }
+            }
+
+            val scaleY = size.height - 10f
+            val scaleWidth = NearbyMapGridMeters.toFloat() * pxPerMeter
+            drawLine(
+                color = scaleColor,
+                start = Offset(8f, scaleY),
+                end = Offset(8f + scaleWidth, scaleY),
+                strokeWidth = 3f,
+                cap = StrokeCap.Square,
+            )
+        }
+        Text(
+            text = "${NearbyMapGridMeters.toInt()} m",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 12.dp),
         )
-    }
-    if (trace.layers.isEmpty()) return
-
-    // Live "you are here": project the current fix through the map's own
-    // viewport so it lands on the drawn course. Heading comes from an earlier
-    // fix, advanced only once the driver has moved a few meters, so a parked car
-    // shows a steady arrow instead of chasing GPS jitter.
-    // The fix stream is first run through the velocity-aided filter (display
-    // only — timing/recording keep consuming raw fixes), then heading anchoring
-    // works off the filtered ~1 Hz fixes and the drawn dot is additionally
-    // smoothed between them via the predictor.
-    val filteredPosition = rememberFilteredLivePosition(profileId, livePosition)
-    val rawCurrent = filteredPosition?.let { GeoPointDto(it.latitude, it.longitude) }
-    var headingAnchor by remember(profileId) { mutableStateOf<GeoPointDto?>(null) }
-    var headingFrom by remember(profileId) { mutableStateOf<GeoPointDto?>(null) }
-    LaunchedEffect(profileId, rawCurrent?.latitude, rawCurrent?.longitude) {
-        val c = rawCurrent ?: return@LaunchedEffect
-        val anchor = headingAnchor
-        if (anchor == null) {
-            headingAnchor = c
-        } else if (approxDistanceMeters(anchor, c) >= HEADING_ANCHOR_METERS) {
-            headingFrom = anchor
-            headingAnchor = c
+        if (center == null) {
+            Text(
+                text = s.waitingForFirstGpsFix,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.align(Alignment.Center),
+            )
         }
     }
-    val current = rememberSmoothedLivePosition(profileId, filteredPosition)
-    val marker = courseMarker(trace.viewport, current, headingFrom)
 
-    val frameModifier = if (fillParent) {
-        modifier
-    } else {
-        modifier
-    }
     if (fillParent) {
-        CourseMapSurface(modifier = frameModifier) {
-            TraceView(
-                layers = trace.layers,
-                fillParent = true,
-                positionMarker = marker,
-            )
-        }
+        CourseMapSurface(modifier = modifier, content = content)
     } else {
-        BoundedCourseMapSurface(compact = compact, modifier = frameModifier) {
-            TraceView(
-                layers = trace.layers,
-                fillParent = true,
-                positionMarker = marker,
-            )
-        }
+        BoundedCourseMapSurface(compact = compact, modifier = modifier, content = content)
     }
 }
 
@@ -1037,79 +1005,13 @@ private fun CourseMapSurface(
 
 private const val CoursePreviewAspectRatio = 4f / 3f
 private const val CompactCoursePreviewAspectRatio = 16f / 9f
+private const val NearbyMapSpanMeters = 500.0
+private const val NearbyMapGridMeters = 100.0
 private val LandscapeCompactRailMaxWidth = 400.dp
 private val LandscapeRailMaxWidth = 420.dp
 
-/**
- * Centered empty state when no Track is selected: names the situation once
- * and leads with the action that fits it — marking a first track, or picking
- * a saved one.
- */
 @Composable
-private fun NoTrackState(
-    hasSavedTracks: Boolean,
-    onChooseTrack: () -> Unit,
-    onBeginMarking: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val spacing = LapSightTheme.spacing
-    val s = strings
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = s.noTrackSelected,
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Spacer(Modifier.height(spacing.xs))
-        Text(
-            text = if (hasSavedTracks) {
-                s.pickSavedTrack
-            } else {
-                s.markFirstTrack
-            },
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(spacing.md))
-        // Cap the action width so buttons stay hand-sized inside a wide
-        // landscape pane while still filling a portrait column.
-        Column(
-            modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-        ) {
-            if (hasSavedTracks) {
-                LapButton(
-                    text = s.chooseTrack,
-                    onClick = onChooseTrack,
-                    icon = ReviewTabIcon,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                LapButton(
-                    text = s.newTrack,
-                    onClick = onBeginMarking,
-                    style = LapButtonStyle.Secondary,
-                    icon = AddActionIcon,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            } else {
-                LapButton(
-                    text = s.newTrack,
-                    onClick = onBeginMarking,
-                    icon = AddActionIcon,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun NewTrackCourseDialog(
+internal fun NewTrackCourseDialog(
     selectedTopology: CourseTopology,
     onSelectTopology: (CourseTopology) -> Unit,
     onBeginMarking: () -> Unit,
@@ -1220,142 +1122,8 @@ private fun DriveActionRow(
 }
 
 /**
- * Track picker (D-01, D-02, D-03): active latest-revision profiles as explicit
- * selection actions. The current Track renders as the highlighted selection —
- * not disabled — and not-timing-ready tracks explain themselves.
- */
-@Composable
-private fun TrackPickerDialog(
-    snapshot: DriveMarkingSnapshot,
-    onSelectProfile: (String) -> Unit,
-    onBeginMarking: () -> Unit,
-    onClose: () -> Unit,
-) {
-    val spacing = LapSightTheme.spacing
-    val s = strings
-    // Cap the list against the real window: the AlertDialog text slot has no
-    // height weighting, so a fixed 420dp list would push the dialog buttons
-    // off a ~360dp-tall landscape screen.
-    val windowHeight = with(LocalDensity.current) {
-        LocalWindowInfo.current.containerSize.height.toDp()
-    }
-    val listMaxHeight = minOf(420.dp, windowHeight * 0.45f)
-    LapDialog(
-        title = s.chooseTrack,
-        onDismissRequest = onClose,
-        confirmText = s.close,
-        confirmIcon = CloseActionIcon,
-        confirmIconOnly = true,
-        confirmContentDescription = s.closeTrackPicker,
-        onConfirm = onClose,
-        dismissText = s.newTrack,
-        dismissIcon = AddActionIcon,
-        onDismiss = {
-            onClose()
-            onBeginMarking()
-        },
-        content = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = listMaxHeight)
-                    .verticalScroll(rememberScrollState())
-                    .padding(top = spacing.sm),
-                verticalArrangement = Arrangement.spacedBy(spacing.sm),
-            ) {
-                if (snapshot.selectableProfiles.isEmpty()) {
-                    Text(
-                        text = s.noSavedTracksYet,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                } else {
-                    snapshot.selectableProfiles.forEach { row ->
-                        val isCurrent = row.profileId == snapshot.timingReadyTrackId
-                        TrackPickerRow(
-                            name = row.name,
-                            isCurrent = isCurrent,
-                            isTimingReady = row.isTimingReady,
-                            onClick = {
-                                if (row.isTimingReady && !isCurrent) {
-                                    onSelectProfile(row.profileId)
-                                }
-                                onClose()
-                            },
-                        )
-                    }
-                }
-            }
-        },
-    )
-}
-
-/** One selectable track row: selected = accent border, not faded-out disabled. */
-@Composable
-private fun TrackPickerRow(
-    name: String,
-    isCurrent: Boolean,
-    isTimingReady: Boolean,
-    onClick: () -> Unit,
-) {
-    val spacing = LapSightTheme.spacing
-    val s = strings
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        color = if (isCurrent) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        border = BorderStroke(
-            1.dp,
-            if (isCurrent) MaterialTheme.colorScheme.primary else LapSightTheme.colors.cardBorder,
-        ),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .padding(horizontal = spacing.md, vertical = spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = name,
-                    color = if (isTimingReady) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        LapSightTheme.colors.disabledContent
-                    },
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (!isTimingReady) {
-                    Text(
-                        text = s.needsStartFinishBeforeTiming,
-                        color = LapSightTheme.colors.statusCaution,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-            if (isCurrent) {
-                Text(
-                    text = s.current,
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
-        }
-    }
-}
-
-/**
  * Compact pre-Timing Track selector (D-01, D-02, D-03): always states the
- * current Track by name or clearly states none. Tapping opens the picker.
+ * current Track by name or clearly states none. Tapping opens Track Center.
  * Rendered only on the stationary Drive surface, never the moving dash.
  */
 @Composable
