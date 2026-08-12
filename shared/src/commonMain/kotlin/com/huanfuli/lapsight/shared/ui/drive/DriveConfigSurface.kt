@@ -62,15 +62,11 @@ import com.huanfuli.lapsight.shared.glasses.NoOpGlassesActions
 import com.huanfuli.lapsight.shared.lap.GeoPoint
 import com.huanfuli.lapsight.shared.lap.LocalProjection
 import com.huanfuli.lapsight.shared.lap.formatLapTime
-import com.huanfuli.lapsight.shared.review.TraceLayer
-import com.huanfuli.lapsight.shared.review.TraceRole
-import com.huanfuli.lapsight.shared.review.buildTrackTraceLayers
 import com.huanfuli.lapsight.shared.session.GeoPointDto
 import com.huanfuli.lapsight.shared.session.RawRecordingSnapshot
 import com.huanfuli.lapsight.shared.session.ReadyState
 import com.huanfuli.lapsight.shared.session.SessionControllerSnapshot
 import com.huanfuli.lapsight.shared.session.TimingRunSnapshot
-import com.huanfuli.lapsight.shared.session.toDto
 import com.huanfuli.lapsight.shared.storage.LoadResult
 import com.huanfuli.lapsight.shared.storage.LocalSessionStore
 import com.huanfuli.lapsight.shared.track.CourseDirection
@@ -84,8 +80,6 @@ import com.huanfuli.lapsight.shared.ui.PlayActionIcon
 import com.huanfuli.lapsight.shared.ui.PointToPointCourseIcon
 import com.huanfuli.lapsight.shared.ui.RotateScreenIcon
 import com.huanfuli.lapsight.shared.ui.StopActionIcon
-import com.huanfuli.lapsight.shared.ui.TracePositionMarker
-import com.huanfuli.lapsight.shared.ui.TraceView
 import com.huanfuli.lapsight.shared.ui.strings
 import com.huanfuli.lapsight.shared.ui.components.LapDialog
 import com.huanfuli.lapsight.shared.ui.components.MetricCell
@@ -323,6 +317,8 @@ private fun LandscapeCockpit(
                 when {
                     snapshot.phase == DriveMarkingPhase.Capturing -> MarkingTracePane(
                         samples = snapshot.capturedSamples,
+                        livePosition = snapshot.latestSample,
+                        sessionStore = sessionStore,
                         modifier = previewModifier,
                     )
                     else -> NearbyLocationPreview(
@@ -592,56 +588,24 @@ private fun rememberSmoothedLivePosition(
 }
 
 /**
- * Live "you are here" marker from the tail of the marking trace, or null when
- * there are too few points to place it. Heading comes from a slightly older
- * point so momentary GPS jitter does not spin the arrow; both points are the
- * projected trace's own points, so the marker stays pinned to the drawn course.
- */
-private fun liveHeadingMarker(layers: List<TraceLayer>): TracePositionMarker? {
-    val points = layers.firstOrNull { it.role == TraceRole.Marking }?.points ?: return null
-    val current = points.lastOrNull() ?: return null
-    val previous = points.getOrNull(points.size - 5)?.takeIf { it != current }
-    return TracePositionMarker(current = current, previous = previous)
-}
-
-/**
- * The accumulating marking trace, filling a landscape pane. Redraws every ~10
- * samples so canvas work stays off the per-sample hot path.
+ * The accumulating marking trace over the platform basemap in landscape.
  */
 @Composable
 private fun MarkingTracePane(
     samples: List<LocationSample>,
+    livePosition: LocationSample?,
+    sessionStore: LocalSessionStore,
     modifier: Modifier = Modifier,
 ) {
-    val s = strings
-    CourseMapSurface(modifier = modifier) {
-        val layerStep = samples.size / 10
-        val layers = remember(layerStep) {
-            buildTrackTraceLayers(
-                markingSamples = samples.map { it.toDto() },
-                referenceLine = null,
-                startFinish = null,
-                sectors = emptyList(),
-                outlierSamples = emptyList(),
-                viewWidth = 400.0,
-                viewHeight = 300.0,
-            )
-        }
-        if (layers.isNotEmpty()) {
-            TraceView(
-                layers = layers,
-                fillParent = true,
-                positionMarker = liveHeadingMarker(layers),
-            )
-        } else {
-            Text(
-                text = s.waitingForFirstGpsFix,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.align(Alignment.Center),
-            )
-        }
-    }
+    NearbyLocationPreview(
+        profileId = null,
+        sessionStore = sessionStore,
+        compact = false,
+        livePosition = livePosition,
+        markingSamples = samples,
+        modifier = modifier,
+        fillParent = true,
+    )
 }
 
 /**
@@ -681,6 +645,7 @@ private fun ControlPanel(
                 MarkingLiveSection(
                     snapshot = snapshot,
                     compact = compact,
+                    sessionStore = sessionStore,
                     modifier = if (fillHeight) Modifier.weight(1f) else Modifier,
                 )
                 DriveActionRow(
@@ -772,13 +737,14 @@ private fun ControlPanel(
 
 /**
  * Live feedback while marking (D-06..D-08): marking clock, captured points,
- * the accumulating trace, and the loop guidance. The trace redraws every ~10
- * samples so the canvas work stays off the per-sample hot path.
+ * the accumulating map trace, and the loop guidance. The trace redraws every
+ * ~10 samples so canvas work stays off the per-sample hot path.
  */
 @Composable
 private fun MarkingLiveSection(
     snapshot: DriveMarkingSnapshot,
     compact: Boolean,
+    sessionStore: LocalSessionStore,
     modifier: Modifier = Modifier,
 ) {
     val spacing = LapSightTheme.spacing
@@ -789,34 +755,14 @@ private fun MarkingLiveSection(
         verticalArrangement = Arrangement.spacedBy(spacing.sm),
     ) {
         MarkingMetricsRow(snapshot = snapshot)
-        // Rebuild the drawn layers in coarse steps, not on every GPS sample.
-        val layerStep = samples.size / 10
-        val layers = remember(layerStep) {
-            buildTrackTraceLayers(
-                markingSamples = samples.map { it.toDto() },
-                referenceLine = null,
-                startFinish = null,
-                sectors = emptyList(),
-                outlierSamples = emptyList(),
-                viewWidth = 400.0,
-                viewHeight = 300.0,
-            )
-        }
-        if (layers.isNotEmpty()) {
-            BoundedCourseMapSurface(compact = compact) {
-                TraceView(
-                    layers = layers,
-                    fillParent = true,
-                    positionMarker = liveHeadingMarker(layers),
-                )
-            }
-        } else {
-            Text(
-                text = s.waitingForFirstGpsFix,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
+        NearbyLocationPreview(
+            profileId = null,
+            sessionStore = sessionStore,
+            compact = compact,
+            livePosition = snapshot.latestSample,
+            markingSamples = samples,
+            modifier = Modifier.fillMaxWidth(),
+        )
         Text(
             text = s.markingGuidanceFor(snapshot.selectedTopology),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -839,6 +785,7 @@ private fun NearbyLocationPreview(
     sessionStore: LocalSessionStore,
     compact: Boolean,
     livePosition: LocationSample?,
+    markingSamples: List<LocationSample> = emptyList(),
     modifier: Modifier = Modifier,
     fillParent: Boolean = false,
 ) {
@@ -850,6 +797,18 @@ private fun NearbyLocationPreview(
     val coursePoints = remember(profileId, profile?.latestRevision?.ordinal) {
         profile?.latestRevision?.referenceLine?.points.orEmpty()
     }
+    // Refresh every fix while the path is short, then in ten-fix batches so a
+    // high-rate external receiver does not rebuild the full path per sample.
+    val markingRedrawKey = if (markingSamples.size < 10) {
+        markingSamples.size
+    } else {
+        markingSamples.size / 10
+    }
+    val markingPoints = remember(markingRedrawKey) {
+        markingSamples.mapNotNull { sample ->
+            sample.toNearbyBasemapCenter()?.let { GeoPoint(it.latitude, it.longitude) }
+        }
+    }
     val filteredPosition = rememberFilteredLivePosition("drive-nearby-map", livePosition)
     val current = rememberSmoothedLivePosition("drive-nearby-map", filteredPosition)
     val center = current?.let { GeoPoint(it.latitude, it.longitude) }
@@ -858,6 +817,7 @@ private fun NearbyLocationPreview(
         center?.let(::LocalProjection)
     }
     val trackColor = MaterialTheme.colorScheme.primary
+    val markingColor = LapSightTheme.colors.traceMarking
     val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
     val accuracyColor = LapSightTheme.colors.statusReady.copy(alpha = 0.16f)
     val locationColor = LapSightTheme.colors.statusReady
@@ -912,6 +872,29 @@ private fun NearbyLocationPreview(
                     path = path,
                     color = trackColor,
                     style = Stroke(width = 7f, cap = StrokeCap.Round),
+                )
+            }
+
+            if (projection != null && markingPoints.size >= 2) {
+                val path = Path()
+                markingPoints.forEachIndexed { index, point ->
+                    val local = projection.toLocal(point)
+                    val canvasPoint = Offset(
+                        x = mapCenter.x + local.x.toFloat() * pxPerMeter,
+                        y = mapCenter.y - local.y.toFloat() * pxPerMeter,
+                    )
+                    if (index == 0) path.moveTo(canvasPoint.x, canvasPoint.y)
+                    else path.lineTo(canvasPoint.x, canvasPoint.y)
+                }
+                drawPath(
+                    path = path,
+                    color = locationOutline,
+                    style = Stroke(width = 9f, cap = StrokeCap.Round),
+                )
+                drawPath(
+                    path = path,
+                    color = markingColor,
+                    style = Stroke(width = 5f, cap = StrokeCap.Round),
                 )
             }
 

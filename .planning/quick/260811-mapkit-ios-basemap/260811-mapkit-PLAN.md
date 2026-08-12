@@ -17,7 +17,9 @@ authoritative source for position, accuracy, course geometry, and timing.
    required GCJ-02 display conversion without changing recorded GPS data.
 6. Retain the shared accuracy circle, current-position marker, heading arrow,
    scale, and selected-course overlay above the platform basemap.
-7. Do not add a Google API key, third-party SDK, geocoding, routing, traffic,
+7. Reuse the same basemap and geographic projection while marking a new track
+   in portrait and landscape, with the captured path drawn above the map.
+8. Do not add a Google API key, third-party SDK, geocoding, routing, traffic,
    analytics, or a second location manager.
 
 ## Behavior
