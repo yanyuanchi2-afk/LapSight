@@ -20,6 +20,7 @@ import com.huanfuli.lapsight.shared.DriveDisplaySettings
 import com.huanfuli.lapsight.shared.LocationFeedMode
 import com.huanfuli.lapsight.shared.PhoneGpsPermissionState
 import com.huanfuli.lapsight.shared.SpeedUnit
+import com.huanfuli.lapsight.shared.external.ExternalGnssFixType
 import com.huanfuli.lapsight.shared.session.RawRecordingSnapshot
 import com.huanfuli.lapsight.shared.session.ReadyBlocker
 import com.huanfuli.lapsight.shared.session.ReadyState
@@ -69,16 +70,31 @@ internal fun DriveStatusBar(
         ?: "--"
     val sourceLabel: String
     val sourceTone: ChipTone
-    when {
-        locationFeedMode == LocationFeedMode.PhoneGps && phoneGpsPermission.isGranted -> {
+    when (locationFeedMode) {
+        LocationFeedMode.PhoneGps -> if (phoneGpsPermission.isGranted) {
             sourceLabel = "GPS OK"
             sourceTone = ChipTone.Ready
-        }
-        locationFeedMode == LocationFeedMode.PhoneGps -> {
+        } else {
             sourceLabel = "GPS NEEDED"
             sourceTone = ChipTone.Caution
         }
-        else -> {
+        LocationFeedMode.ExternalGnss -> if (snapshot.latestSample != null) {
+            sourceLabel = when (snapshot.latestSample.externalFixType) {
+                ExternalGnssFixType.RtkFixed -> "RTK FIXED"
+                ExternalGnssFixType.RtkFloat -> "RTK FLOAT"
+                ExternalGnssFixType.DifferentialGps -> "DGNSS"
+                else -> "EXT GPS"
+            }
+            sourceTone = if (snapshot.latestSample.externalFixType == ExternalGnssFixType.RtkFixed) {
+                ChipTone.Ready
+            } else {
+                ChipTone.Caution
+            }
+        } else {
+            sourceLabel = "EXT WAIT"
+            sourceTone = ChipTone.Caution
+        }
+        LocationFeedMode.Simulated -> {
             sourceLabel = "SIM"
             sourceTone = ChipTone.Demo
         }

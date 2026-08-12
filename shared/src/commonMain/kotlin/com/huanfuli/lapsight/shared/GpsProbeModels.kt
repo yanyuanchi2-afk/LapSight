@@ -1,5 +1,6 @@
 package com.huanfuli.lapsight.shared
 
+import com.huanfuli.lapsight.shared.external.ExternalGnssFixType
 import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.sin
@@ -44,6 +45,8 @@ data class LocationSample(
      * the capability was not observed (simulated/legacy).
      */
     val usesDualFrequency: Boolean? = null,
+    /** Receiver solution mode for external GNSS fixes (for example RTK Float/Fixed). */
+    val externalFixType: ExternalGnssFixType? = null,
 )
 
 data class GpsProbeState(

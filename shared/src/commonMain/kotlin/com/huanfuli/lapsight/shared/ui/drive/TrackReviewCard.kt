@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.huanfuli.lapsight.shared.LocationSource
 import com.huanfuli.lapsight.shared.review.buildTrackTraceLayers
 import com.huanfuli.lapsight.shared.track.CourseTopology
 import com.huanfuli.lapsight.shared.track.SectorLineDto
@@ -387,10 +388,10 @@ private fun TrackReviewLandscape(
 @Composable
 private fun TrackReviewSourceChip(review: TrackReviewState) {
     val s = strings
-    if (review.extraction.markingSession.source.isSimulated) {
-        StatusChip(text = s.demoSimGps, tone = ChipTone.Demo)
-    } else {
-        StatusChip(text = s.phoneGpsLive, tone = ChipTone.Ready)
+    when (review.extraction.markingSession.source.source) {
+        LocationSource.Simulated -> StatusChip(text = s.demoSimGps, tone = ChipTone.Demo)
+        LocationSource.PhoneGps -> StatusChip(text = s.phoneGpsLive, tone = ChipTone.Ready)
+        LocationSource.ExternalGnss -> StatusChip(text = s.externalGnss, tone = ChipTone.Ready)
     }
 }
 

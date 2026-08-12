@@ -46,8 +46,15 @@ data class GpsQualitySummary(
             if (samples.isEmpty()) return EMPTY
 
             val duration = samples.last().elapsedMillis - samples.first().elapsedMillis
-            val rate = if (duration > 0L && samples.size > 1) {
-                (samples.size - 1) * 1_000.0 / duration
+            // NMEA receivers report one fix through several sentences (for
+            // example RMC, GGA and EPE). They share the same UTC epoch and must
+            // count as one receiver update, not three UI samples.
+            val fixEpochCount = samples.asSequence()
+                .map { it.elapsedMillis }
+                .distinct()
+                .count()
+            val rate = if (duration > 0L && fixEpochCount > 1) {
+                (fixEpochCount - 1) * 1_000.0 / duration
             } else {
                 0.0
             }

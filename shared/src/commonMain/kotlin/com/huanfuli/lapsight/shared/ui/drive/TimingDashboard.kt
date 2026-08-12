@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import com.huanfuli.lapsight.shared.ui.LapSightAutoSize
 import com.huanfuli.lapsight.shared.DashOrientation
 import com.huanfuli.lapsight.shared.DriveDisplaySettings
+import com.huanfuli.lapsight.shared.HudDisplayPage
 import com.huanfuli.lapsight.shared.SpeedUnit
 import com.huanfuli.lapsight.shared.ghost.DeltaDisplayState
 import com.huanfuli.lapsight.shared.ghost.DeltaTone
@@ -51,7 +52,9 @@ import com.huanfuli.lapsight.shared.lap.formatLapTime
 import com.huanfuli.lapsight.shared.nowEpochMillis
 import com.huanfuli.lapsight.shared.session.TimingRunSnapshot
 import com.huanfuli.lapsight.shared.ui.LapSightTheme
+import com.huanfuli.lapsight.shared.ui.PauseActionIcon
 import com.huanfuli.lapsight.shared.ui.RotateScreenIcon
+import com.huanfuli.lapsight.shared.ui.ResumeActionIcon
 import com.huanfuli.lapsight.shared.ui.StopActionIcon
 import com.huanfuli.lapsight.shared.ui.components.TimingText
 import kotlinx.coroutines.delay
@@ -75,7 +78,11 @@ internal fun TimingRunSurface(
     displaySettings: DriveDisplaySettings,
     onToggleOrientation: () -> Unit,
     orientationToggleEnabled: Boolean,
+    timingPaused: Boolean,
+    onToggleTimingPause: () -> Unit,
     onStopTiming: () -> Unit,
+    hudDisplayPage: HudDisplayPage? = null,
+    onCycleHudDisplayPage: (() -> Unit)? = null,
     isCompactLandscape: Boolean,
     padding: Dp,
 ) {
@@ -223,7 +230,11 @@ internal fun TimingRunSurface(
                 orientation = orientation,
                 onToggleOrientation = onToggleOrientation,
                 orientationToggleEnabled = orientationToggleEnabled,
+                timingPaused = timingPaused,
+                onToggleTimingPause = onToggleTimingPause,
                 onStopTiming = onStopTiming,
+                hudDisplayPage = hudDisplayPage,
+                onCycleHudDisplayPage = onCycleHudDisplayPage,
             )
             TimingPanelLapFocusDark -> LapFocusPanel(
                 style = LapFocusStyle.Dark,
@@ -233,7 +244,11 @@ internal fun TimingRunSurface(
                 orientation = orientation,
                 onToggleOrientation = onToggleOrientation,
                 orientationToggleEnabled = orientationToggleEnabled,
+                timingPaused = timingPaused,
+                onToggleTimingPause = onToggleTimingPause,
                 onStopTiming = onStopTiming,
+                hudDisplayPage = hudDisplayPage,
+                onCycleHudDisplayPage = onCycleHudDisplayPage,
                 isLandscapeWindow = isLandscapeWindow,
                 isCompactLandscape = isCompactLandscape,
                 padding = padding,
@@ -246,7 +261,11 @@ internal fun TimingRunSurface(
                 orientation = orientation,
                 onToggleOrientation = onToggleOrientation,
                 orientationToggleEnabled = orientationToggleEnabled,
+                timingPaused = timingPaused,
+                onToggleTimingPause = onToggleTimingPause,
                 onStopTiming = onStopTiming,
+                hudDisplayPage = hudDisplayPage,
+                onCycleHudDisplayPage = onCycleHudDisplayPage,
                 isLandscapeWindow = isLandscapeWindow,
                 isCompactLandscape = isCompactLandscape,
                 padding = padding,
@@ -287,7 +306,11 @@ private fun TelemetryTimingPanel(
     orientation: DashOrientation,
     onToggleOrientation: () -> Unit,
     orientationToggleEnabled: Boolean,
+    timingPaused: Boolean,
+    onToggleTimingPause: () -> Unit,
     onStopTiming: () -> Unit,
+    hudDisplayPage: HudDisplayPage?,
+    onCycleHudDisplayPage: (() -> Unit)?,
 ) {
     val spacing = LapSightTheme.spacing
     // Layout follows the ACTUAL window shape, not the requested lock: on
@@ -305,6 +328,7 @@ private fun TelemetryTimingPanel(
             ) {
                 PrimaryTimingReadouts(
                     timingRun = timingRun,
+                    timingPaused = timingPaused,
                     speedLabel = speedLabel,
                     speedUnit = speedUnit,
                     compact = true,
@@ -322,7 +346,11 @@ private fun TelemetryTimingPanel(
                     orientation = orientation,
                     onToggleOrientation = onToggleOrientation,
                     orientationToggleEnabled = orientationToggleEnabled,
+                    timingPaused = timingPaused,
+                    onToggleTimingPause = onToggleTimingPause,
                     onStopTiming = onStopTiming,
+                    hudDisplayPage = hudDisplayPage,
+                    onCycleHudDisplayPage = onCycleHudDisplayPage,
                 )
             }
             TelemetryGrid(
@@ -338,6 +366,7 @@ private fun TelemetryTimingPanel(
         ) {
             PrimaryTimingReadouts(
                 timingRun = timingRun,
+                timingPaused = timingPaused,
                 speedLabel = speedLabel,
                 speedUnit = speedUnit,
                 compact = false,
@@ -358,7 +387,11 @@ private fun TelemetryTimingPanel(
                 orientation = orientation,
                 onToggleOrientation = onToggleOrientation,
                 orientationToggleEnabled = orientationToggleEnabled,
+                timingPaused = timingPaused,
+                onToggleTimingPause = onToggleTimingPause,
                 onStopTiming = onStopTiming,
+                hudDisplayPage = hudDisplayPage,
+                onCycleHudDisplayPage = onCycleHudDisplayPage,
             )
         }
     }
@@ -373,7 +406,11 @@ private fun LapFocusPanel(
     orientation: DashOrientation,
     onToggleOrientation: () -> Unit,
     orientationToggleEnabled: Boolean,
+    timingPaused: Boolean,
+    onToggleTimingPause: () -> Unit,
     onStopTiming: () -> Unit,
+    hudDisplayPage: HudDisplayPage?,
+    onCycleHudDisplayPage: (() -> Unit)?,
     isLandscapeWindow: Boolean,
     isCompactLandscape: Boolean,
     padding: Dp,
@@ -450,6 +487,7 @@ private fun LapFocusPanel(
                 ) {
                     LapFocusTimeReadout(
                         timingRun = timingRun,
+                        timingPaused = timingPaused,
                         fastestLapFlash = fastestLapFlash,
                         clockUpdateIntervalMillis = clockUpdateIntervalMillis,
                         color = primaryColor,
@@ -491,7 +529,11 @@ private fun LapFocusPanel(
                         orientation = orientation,
                         onToggleOrientation = onToggleOrientation,
                         orientationToggleEnabled = orientationToggleEnabled,
+                        timingPaused = timingPaused,
+                        onToggleTimingPause = onToggleTimingPause,
                         onStopTiming = onStopTiming,
+                        hudDisplayPage = hudDisplayPage,
+                        onCycleHudDisplayPage = onCycleHudDisplayPage,
                     )
                 }
             }
@@ -535,6 +577,7 @@ private fun LapFocusPanel(
             ) {
                 LapFocusTimeReadout(
                     timingRun = timingRun,
+                    timingPaused = timingPaused,
                     fastestLapFlash = fastestLapFlash,
                     clockUpdateIntervalMillis = clockUpdateIntervalMillis,
                     color = primaryColor,
@@ -557,7 +600,11 @@ private fun LapFocusPanel(
             orientation = orientation,
             onToggleOrientation = onToggleOrientation,
             orientationToggleEnabled = orientationToggleEnabled,
+            timingPaused = timingPaused,
+            onToggleTimingPause = onToggleTimingPause,
             onStopTiming = onStopTiming,
+            hudDisplayPage = hudDisplayPage,
+            onCycleHudDisplayPage = onCycleHudDisplayPage,
         )
     }
 }
@@ -565,6 +612,7 @@ private fun LapFocusPanel(
 @Composable
 private fun LapFocusTimeReadout(
     timingRun: TimingRunSnapshot,
+    timingPaused: Boolean,
     fastestLapFlash: FastestLapFlash?,
     clockUpdateIntervalMillis: Long,
     color: Color,
@@ -588,6 +636,7 @@ private fun LapFocusTimeReadout(
         RunningLapTimeText(
             currentLapMillis = timingRun.currentLapMillis,
             isActive = timingRun.isActive,
+            isRunning = !timingPaused,
             updateIntervalMillis = clockUpdateIntervalMillis,
             color = color,
             textAlign = TextAlign.Center,
@@ -665,6 +714,7 @@ private data class TelemetryMetric(
 private fun RunningLapTimeText(
     currentLapMillis: Long?,
     isActive: Boolean,
+    isRunning: Boolean,
     updateIntervalMillis: Long,
     color: Color,
     textAlign: TextAlign,
@@ -688,8 +738,8 @@ private fun RunningLapTimeText(
         }
     }
 
-    LaunchedEffect(isActive, updateIntervalMillis) {
-        while (isActive) {
+    LaunchedEffect(isActive, isRunning, updateIntervalMillis) {
+        while (isActive && isRunning) {
             delay(updateIntervalMillis.coerceAtLeast(16L))
             val base = baseMillis ?: continue
             val delta = nowEpochMillis() - baseEpochMillis
@@ -736,6 +786,7 @@ private fun StaticLapTimeText(
 @Composable
 private fun PrimaryTimingReadouts(
     timingRun: TimingRunSnapshot,
+    timingPaused: Boolean,
     speedLabel: String,
     speedUnit: String,
     compact: Boolean,
@@ -754,6 +805,7 @@ private fun PrimaryTimingReadouts(
         RunningLapTimeText(
             currentLapMillis = timingRun.currentLapMillis,
             isActive = timingRun.isActive,
+            isRunning = !timingPaused,
             updateIntervalMillis = clockUpdateIntervalMillis,
             color = MaterialTheme.colorScheme.primary,
             textAlign = TextAlign.Start,
@@ -924,7 +976,11 @@ private fun TimingControls(
     orientation: DashOrientation,
     onToggleOrientation: () -> Unit,
     orientationToggleEnabled: Boolean,
+    timingPaused: Boolean,
+    onToggleTimingPause: () -> Unit,
     onStopTiming: () -> Unit,
+    hudDisplayPage: HudDisplayPage?,
+    onCycleHudDisplayPage: (() -> Unit)?,
 ) {
     val spacing = LapSightTheme.spacing
     Row(
@@ -935,8 +991,24 @@ private fun TimingControls(
         // Timing-active controls need a gloved-use target; Stop gets the larger
         // footprint because it is the critical moving-state action.
         Button(
+            onClick = onToggleTimingPause,
+            modifier = Modifier.weight(0.8f).height(64.dp),
+            shape = MaterialTheme.shapes.medium,
+            contentPadding = PaddingValues(0.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ),
+        ) {
+            Icon(
+                imageVector = if (timingPaused) ResumeActionIcon else PauseActionIcon,
+                contentDescription = if (timingPaused) "Resume timing" else "Pause timing",
+                modifier = Modifier.size(32.dp),
+            )
+        }
+        Button(
             onClick = onStopTiming,
-            modifier = Modifier.weight(1.35f).height(76.dp),
+            modifier = Modifier.weight(1.2f).height(76.dp),
             shape = MaterialTheme.shapes.medium,
             contentPadding = PaddingValues(0.dp),
             colors = ButtonDefaults.buttonColors(
@@ -950,10 +1022,28 @@ private fun TimingControls(
                 modifier = Modifier.size(34.dp),
             )
         }
+        if (hudDisplayPage != null && onCycleHudDisplayPage != null) {
+            Button(
+                onClick = onCycleHudDisplayPage,
+                modifier = Modifier.weight(0.8f).height(64.dp),
+                shape = MaterialTheme.shapes.medium,
+                contentPadding = PaddingValues(horizontal = 4.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                ),
+            ) {
+                Text(
+                    text = "HUD\n${hudDisplayPage.wireName.take(4)}",
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
         Button(
             onClick = onToggleOrientation,
             enabled = orientationToggleEnabled,
-            modifier = Modifier.weight(0.65f).height(64.dp),
+            modifier = Modifier.weight(0.6f).height(64.dp),
             shape = MaterialTheme.shapes.medium,
             contentPadding = PaddingValues(0.dp),
             colors = ButtonDefaults.buttonColors(

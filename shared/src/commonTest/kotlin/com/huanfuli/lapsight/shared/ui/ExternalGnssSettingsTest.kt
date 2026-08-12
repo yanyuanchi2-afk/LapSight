@@ -121,6 +121,6 @@ class ExternalGnssSettingsTest {
             phoneGpsPermissionGranted = false,
             strings = StringsEn,
         )
-        assertEquals(StringsEn.externalGnssUnvalidatedNote, note)
+        assertEquals(StringsEn.externalGnssNote, note)
     }
 }

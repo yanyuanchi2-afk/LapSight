@@ -89,6 +89,26 @@ class DriveMarkingControllerTest {
     }
 
     @Test
+    fun importedHudMarkingReplacesPartialPhoneCaptureBeforeReview() {
+        val controller = controller()
+        controller.beginMarking()
+        controller.captureSamples(3)
+        val imported = listOf(
+            LocationSample(0, 39.0, -86.0, null, 10.0, null, null, LocationSource.ExternalGnss),
+            LocationSample(100, 39.0001, -86.0001, null, 11.0, null, null, LocationSource.ExternalGnss),
+            LocationSample(200, 39.0002, -86.0002, null, 12.0, null, null, LocationSource.ExternalGnss),
+            LocationSample(300, 39.0003, -86.0003, null, 13.0, null, null, LocationSource.ExternalGnss),
+        )
+
+        controller.reviewImportedMarking(imported)
+
+        val review = assertNotNull(controller.snapshot().reviewState)
+        assertEquals(DriveMarkingPhase.Review, controller.snapshot().phase)
+        assertEquals(imported.size, review.extraction.markingSession.samples.size)
+        assertEquals(LocationSource.ExternalGnss, review.extraction.markingSession.source.source)
+    }
+
+    @Test
     fun markingATrackSelectsItAsCurrentAndUnblocksTiming() {
         val controller = controller()
         // No saved track yet: Start Timing is blocked with the exact UI-SPEC copy and
@@ -202,6 +222,34 @@ class DriveMarkingControllerTest {
 
         assertNotNull(track)
         assertEquals(LocationSource.PhoneGps, track.source.source)
+        assertFalse(track.source.isSimulated)
+    }
+
+    @Test
+    fun externalGnssProviderPersistsExternalSourceThroughTheSameInterface() {
+        val externalSamples = GpsFixtureLibrary.cleanTenLoop()
+            .map { it.copy(source = LocationSource.ExternalGnss) }
+        val controller = DriveMarkingController(
+            provider = ListLocationSampleProvider(externalSamples),
+            store = InMemorySessionStore(),
+            appMetadata = app,
+            now = { 1_700_000_000_150L },
+        )
+
+        controller.beginMarking()
+        controller.captureSamples(2400)
+        controller.stopMarking()
+
+        val review = controller.snapshot().reviewState
+        assertNotNull(review)
+        assertEquals(LocationSource.ExternalGnss, review.extraction.markingSession.source.source)
+        assertFalse(review.extraction.markingSession.source.isSimulated)
+
+        controller.confirmStartFinish()
+        val track = controller.saveTrack()
+
+        assertNotNull(track)
+        assertEquals(LocationSource.ExternalGnss, track.source.source)
         assertFalse(track.source.isSimulated)
     }
 

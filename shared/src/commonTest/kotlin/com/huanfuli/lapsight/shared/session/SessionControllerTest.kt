@@ -132,6 +132,25 @@ class SessionControllerTest {
         assertEquals(TimingDraftState.StoppedPendingSave, stopped.state)
     }
 
+    @Test
+    fun pauseDropsSamplesAndResumeExcludesPausedDuration() {
+        val track = saveTrackWithStartFinish()
+        val controller = controller()
+        assertIs<StartTimingResult.Started>(controller.startTiming(track.id))
+        val source = ReplayFixtures.multiLapLoop(listOf(40_000L)).first()
+
+        controller.ingestSample(source.copy(elapsedMillis = 0L))
+        controller.pause()
+        controller.ingestSample(source.copy(elapsedMillis = 60_000L))
+        controller.resume()
+        controller.ingestSample(source.copy(elapsedMillis = 61_000L))
+        controller.ingestSample(source.copy(elapsedMillis = 62_000L))
+
+        val run = controller.timingRunSnapshot()
+        assertEquals(3, run.checkpointedSampleCount)
+        assertEquals(1_000L, run.sessionElapsedMillis)
+    }
+
     // --- Test 3 (D-14, D-16): Save → Review history; Discard → no history ------
 
     @Test

@@ -84,5 +84,6 @@ fun ExternalGnssFixSnapshot.toLocationSample(): LocationSample? {
         verticalAccuracyMeters = quality.verticalAccuracyMeters,
         satellitesInUse = quality.satellitesInUse,
         usesDualFrequency = quality.usesDualFrequency,
+        externalFixType = quality.fixType,
     )
 }

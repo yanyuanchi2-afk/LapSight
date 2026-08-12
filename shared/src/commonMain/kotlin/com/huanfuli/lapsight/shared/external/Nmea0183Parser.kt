@@ -91,12 +91,15 @@ class Nmea0183Parser {
         }
 
         val fields = payload.split(',')
-        return when (sentenceType) {
+        return when {
+            fields.firstOrNull()?.uppercase() == "PQTMEPE" -> parsePqtmEpe(fields, normalized)
+            else -> when (sentenceType) {
             "RMC" -> parseRmc(fields, normalized)
             "GGA" -> parseGga(fields, normalized)
             "GNS" -> parseGns(fields, normalized)
+            "GST" -> parseGst(fields, normalized)
             "VTG" -> parseVtg(fields, normalized)
-            "GSA", "GST", "ZDA" -> Nmea0183ParseResult.Ignored(
+            "GSA", "ZDA" -> Nmea0183ParseResult.Ignored(
                 sentenceType = sentenceType,
                 reason = Nmea0183IgnoredReason.DiagnosticOnly,
             )
@@ -104,6 +107,7 @@ class Nmea0183Parser {
                 sentenceType = sentenceType,
                 reason = Nmea0183IgnoredReason.UnsupportedSentence,
             )
+            }
         }
     }
 
@@ -114,7 +118,7 @@ class Nmea0183Parser {
         val status = fields.getOrNull(2).orEmpty().uppercase()
         val isValid = status == "A"
 
-        currentFix = currentFix.copy(elapsedMillis = time)
+        currentFix = currentFix.atElapsed(time)
         if (!isValid) {
             currentFix = currentFix.copy(
                 latitude = null,
@@ -152,7 +156,7 @@ class Nmea0183Parser {
         val qualityCode = fields.getOrNull(6)?.toIntOrNull() ?: 0
         val isValid = qualityCode > 0
 
-        currentFix = currentFix.copy(elapsedMillis = time)
+        currentFix = currentFix.atElapsed(time)
         if (!isValid) {
             currentFix = currentFix.copy(
                 latitude = null,
@@ -190,7 +194,7 @@ class Nmea0183Parser {
         val mode = fields.getOrNull(6).orEmpty().uppercase()
         val isValid = mode.isNotBlank() && mode.any { it != 'N' }
 
-        currentFix = currentFix.copy(elapsedMillis = time)
+        currentFix = currentFix.atElapsed(time)
         if (!isValid) {
             currentFix = currentFix.copy(
                 latitude = null,
@@ -239,6 +243,47 @@ class Nmea0183Parser {
         }
     }
 
+    private fun parseGst(fields: List<String>, raw: String): Nmea0183ParseResult {
+        if (fields.size < 9) return reject("GST", Nmea0183RejectReason.MissingFields, raw)
+        val time = parseTimeMillis(fields.getOrNull(1))
+            ?: return reject("GST", Nmea0183RejectReason.MalformedTime, raw)
+        val semiMajorMeters = fields.getOrNull(3)?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+        val latitudeSigmaMeters = fields.getOrNull(6)?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+        val longitudeSigmaMeters = fields.getOrNull(7)?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+        val horizontalAccuracyMeters = semiMajorMeters
+            ?: listOfNotNull(latitudeSigmaMeters, longitudeSigmaMeters).maxOrNull()
+            ?: return reject("GST", Nmea0183RejectReason.MissingFields, raw)
+        val verticalAccuracyMeters = fields.getOrNull(8)?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+
+        currentFix = currentFix.atElapsed(time).copy(
+            horizontalAccuracyMeters = horizontalAccuracyMeters,
+            verticalAccuracyMeters = verticalAccuracyMeters,
+        )
+        return if (currentFix.latitude != null || currentFix.longitude != null || !currentFix.isValid) {
+            snapshot("GST")
+        } else {
+            Nmea0183ParseResult.Ignored("GST", Nmea0183IgnoredReason.NoCurrentFix)
+        }
+    }
+
+    private fun parsePqtmEpe(fields: List<String>, raw: String): Nmea0183ParseResult {
+        if (fields.size < 7 || fields[1] != "2") {
+            return reject("PQTMEPE", Nmea0183RejectReason.MissingFields, raw)
+        }
+        val verticalAccuracyMeters = fields[4].toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+        val horizontalAccuracyMeters = fields[5].toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+            ?: return reject("PQTMEPE", Nmea0183RejectReason.MissingFields, raw)
+        currentFix = currentFix.copy(
+            horizontalAccuracyMeters = horizontalAccuracyMeters,
+            verticalAccuracyMeters = verticalAccuracyMeters,
+        )
+        return if (currentFix.latitude != null || currentFix.longitude != null || !currentFix.isValid) {
+            snapshot("PQTMEPE")
+        } else {
+            Nmea0183ParseResult.Ignored("PQTMEPE", Nmea0183IgnoredReason.NoCurrentFix)
+        }
+    }
+
     private fun snapshot(sentenceType: String): Nmea0183ParseResult.Snapshot =
         Nmea0183ParseResult.Snapshot(
             ExternalGnssFixSnapshot(
@@ -253,9 +298,8 @@ class Nmea0183Parser {
                     fixType = if (currentFix.isValid) currentFix.fixType else ExternalGnssFixType.NoFix,
                     satellitesInUse = currentFix.satellitesInUse,
                     hdop = currentFix.hdop,
-                    // HDOP is a unitless dilution-of-precision multiplier, not a meters accuracy
-                    // figure; no parsed NMEA sentence here carries a real accuracy-in-meters field.
-                    horizontalAccuracyMeters = null,
+                    horizontalAccuracyMeters = currentFix.horizontalAccuracyMeters,
+                    verticalAccuracyMeters = currentFix.verticalAccuracyMeters,
                 ),
                 source = ExternalGnssSourceMetadata(
                     protocol = ExternalGnssProtocol.Nmea0183,
@@ -315,9 +359,22 @@ private data class NmeaFixAccumulator(
     val altitudeMeters: Double? = null,
     val satellitesInUse: Int? = null,
     val hdop: Double? = null,
+    val horizontalAccuracyMeters: Double? = null,
+    val verticalAccuracyMeters: Double? = null,
     val isValid: Boolean = false,
     val fixType: ExternalGnssFixType = ExternalGnssFixType.NoFix,
 )
+
+private fun NmeaFixAccumulator.atElapsed(value: Long): NmeaFixAccumulator =
+    if (elapsedMillis == null || elapsedMillis == value) {
+        copy(elapsedMillis = value)
+    } else {
+        copy(
+            elapsedMillis = value,
+            horizontalAccuracyMeters = null,
+            verticalAccuracyMeters = null,
+        )
+    }
 
 private fun StringBuilder.indexOfLineEnd(): Int {
     for (index in 0 until length) {

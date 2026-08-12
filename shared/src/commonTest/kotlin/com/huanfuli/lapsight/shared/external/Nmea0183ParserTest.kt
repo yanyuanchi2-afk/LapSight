@@ -131,6 +131,33 @@ class Nmea0183ParserTest {
     }
 
     @Test
+    fun gstSuppliesMeterAccuracyForTheExistingLocationSampleContract() {
+        val snapshots = Nmea0183Parser().accept(
+            sentence("GPGGA,123519,4807.038,N,01131.000,E,4,18,0.7,545.4,M,46.9,M,,") +
+                sentence("GNGST,123519,0.42,0.36,0.21,74.0,0.25,0.31,0.52"),
+        ).snapshots()
+
+        val latest = snapshots.last()
+        assertEquals(0.36, latest.quality.horizontalAccuracyMeters ?: 0.0, 0.000001)
+        assertEquals(0.52, latest.quality.verticalAccuracyMeters ?: 0.0, 0.000001)
+        assertEquals(18, latest.quality.satellitesInUse)
+        assertEquals(ExternalGnssFixType.RtkFixed, latest.quality.fixType)
+    }
+
+    @Test
+    fun quectelEpeSuppliesMeterAccuracyWhenLc29hDoesNotOutputGst() {
+        val snapshots = Nmea0183Parser().accept(
+            sentence("GNGGA,123519,4807.038,N,01131.000,E,4,38,0.7,545.4,M,46.9,M,,") +
+                sentence("PQTMEPE,2,0.031,0.028,0.052,0.042,0.067"),
+        ).snapshots()
+
+        val latest = snapshots.last()
+        assertEquals(0.042, latest.quality.horizontalAccuracyMeters ?: 0.0, 0.000001)
+        assertEquals(0.052, latest.quality.verticalAccuracyMeters ?: 0.0, 0.000001)
+        assertEquals(38, latest.quality.satellitesInUse)
+    }
+
+    @Test
     fun highRateBurstEmitsEveryDecodedFixInOrder() {
         val burst = (0 until 12).joinToString(separator = "") { index ->
             val seconds = index.toString().padStart(2, '0')

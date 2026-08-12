@@ -246,6 +246,14 @@ class SessionController(
         stopped = true
     }
 
+    fun pause() {
+        recorder?.pause()
+    }
+
+    fun resume() {
+        recorder?.resume()
+    }
+
     /**
      * Promote the stopped draft into formal Review history (D-14). Returns
      * [SaveDraftResult.NothingToSave] when no draft is stopped.

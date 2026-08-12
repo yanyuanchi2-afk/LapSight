@@ -161,6 +161,10 @@ class TimingSessionRecorder(
     private val sectorResults: MutableList<SectorResult> = mutableListOf()
     private var lastTimingState = engine.state
     private var totalDurationMillis: Long = 0L
+    private var paused = false
+    private var resumePending = false
+    private var elapsedOffsetMillis = 0L
+    private var lastAcceptedSourceElapsedMillis: Long? = null
     var checkpointCount: Int = 0
         private set
 
@@ -286,7 +290,29 @@ class TimingSessionRecorder(
      * events into the draft checkpoint (D-13). Pure with respect to inputs.
      */
     fun onSample(sample: LocationSample) {
-        processSample(sample, allowCheckpoint = true)
+        if (paused) return
+        if (resumePending) {
+            lastAcceptedSourceElapsedMillis?.let { previous ->
+                elapsedOffsetMillis += (sample.elapsedMillis - previous).coerceAtLeast(0L)
+            }
+            resumePending = false
+        }
+        lastAcceptedSourceElapsedMillis = sample.elapsedMillis
+        processSample(
+            sample.copy(elapsedMillis = (sample.elapsedMillis - elapsedOffsetMillis).coerceAtLeast(0L)),
+            allowCheckpoint = true,
+        )
+    }
+
+    fun pause() {
+        paused = true
+    }
+
+    fun resume() {
+        if (paused) {
+            paused = false
+            resumePending = true
+        }
     }
 
     /**
@@ -295,6 +321,7 @@ class TimingSessionRecorder(
      */
     fun restoreSamples(restoredSamples: List<LocationSample>) {
         restoredSamples.forEach { processSample(it, allowCheckpoint = false) }
+        lastAcceptedSourceElapsedMillis = restoredSamples.lastOrNull()?.elapsedMillis
     }
 
     private fun processSample(

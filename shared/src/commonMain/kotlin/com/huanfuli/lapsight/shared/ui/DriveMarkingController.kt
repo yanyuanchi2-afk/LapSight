@@ -74,6 +74,10 @@ data class DriveMarkingSnapshot(
     val capturedSamples: List<LocationSample> = emptyList(),
     /** Course shape selected for the next marking capture. */
     val selectedTopology: CourseTopology = CourseTopology.Circuit,
+    /** Authoritative HUD marking clock when the active backend is LapSight-HUD. */
+    val backendMarkingElapsedMillis: Long? = null,
+    /** Authoritative HUD geometry-point count; distinct from the raw NMEA sample count. */
+    val backendMarkingPointCount: Int? = null,
 ) {
     val speedKmhLabel: String
         get() = latestSample?.speedMetersPerSecond
@@ -295,6 +299,21 @@ class DriveMarkingController(
      */
     fun stopMarking() {
         if (phase != DriveMarkingPhase.Capturing) return
+        buildReviewFromCaptured()
+    }
+
+    /**
+     * Replace any reconnect-only phone trace with the complete, CRC-verified
+     * marking captured by the authoritative HUD backend.
+     */
+    fun reviewImportedMarking(samples: List<LocationSample>) {
+        if (samples.isEmpty()) return
+        captured.clear()
+        captured.addAll(samples)
+        buildReviewFromCaptured()
+    }
+
+    private fun buildReviewFromCaptured() {
         val source = sourceMetadataFor(captured)
         val marking = TrackMarkingSession(
             id = "mark-${now()}",
@@ -412,9 +431,10 @@ class DriveMarkingController(
     }
 
     private fun sourceMetadataFor(samples: List<LocationSample>): SourceMetadata {
-        val simulated = samples.all { it.source == LocationSource.Simulated }
+        val source = samples.firstOrNull()?.source ?: LocationSource.Simulated
+        val simulated = source == LocationSource.Simulated
         return SourceMetadata(
-            source = if (simulated) LocationSource.Simulated else LocationSource.PhoneGps,
+            source = source,
             isSimulated = simulated,
             label = if (simulated) "Demo" else null,
         )

@@ -36,6 +36,59 @@ class ExternalGnssLocationProviderTest {
     }
 
     @Test
+    fun nmeaQualityUsesTheSameSampleFieldsAsPhoneGps() {
+        val client = FakeExternalGnssByteStreamClient()
+        val provider = ExternalGnssLocationProvider(client, ExternalGnssProtocol.Nmea0183)
+
+        provider.start()
+        client.emitBytes((
+            sentence("GPGGA,123519,4807.038,N,01131.000,E,4,18,0.7,545.4,M,46.9,M,,") +
+                sentence("GNGST,123519,0.42,0.36,0.21,74.0,0.25,0.31,0.52")
+            ).encodeToByteArray())
+
+        val sample = provider.drainPending().last()
+        assertEquals(LocationSource.ExternalGnss, sample.source)
+        assertEquals(18, sample.satellitesInUse)
+        assertEquals(0.36, sample.horizontalAccuracyMeters ?: 0.0, 0.000001)
+        assertEquals(0.52, sample.verticalAccuracyMeters ?: 0.0, 0.000001)
+    }
+
+    @Test
+    fun lc29hEpePopulatesExistingAccuracyWithoutHudSpecificUiModel() {
+        val client = FakeExternalGnssByteStreamClient()
+        val provider = ExternalGnssLocationProvider(client, ExternalGnssProtocol.Nmea0183)
+
+        provider.start()
+        client.emitBytes((
+            sentence("GNGGA,123519,4807.038,N,01131.000,E,4,38,0.7,545.4,M,46.9,M,,") +
+                sentence("PQTMEPE,2,0.031,0.028,0.052,0.042,0.067")
+            ).encodeToByteArray())
+
+        val sample = provider.drainPending().last()
+        assertEquals(38, sample.satellitesInUse)
+        assertEquals(0.042, sample.horizontalAccuracyMeters ?: 0.0, 0.000001)
+        assertEquals(0.052, sample.verticalAccuracyMeters ?: 0.0, 0.000001)
+    }
+
+    @Test
+    fun sameEpochNmeaSentencesProduceOneReceiverFix() {
+        val client = FakeExternalGnssByteStreamClient()
+        val provider = ExternalGnssLocationProvider(client, ExternalGnssProtocol.Nmea0183)
+
+        provider.start()
+        client.emitBytes((
+            sentence("GNGGA,123519,4807.038,N,01131.000,E,4,38,0.7,545.4,M,46.9,M,,") +
+                sentence("GNGST,123519,0.42,0.36,0.21,74.0,0.25,0.31,0.52") +
+                sentence("PQTMEPE,2,0.031,0.028,0.052,0.042,0.067")
+            ).encodeToByteArray())
+
+        val samples = provider.drainPending()
+        assertEquals(1, samples.size)
+        assertEquals(38, samples.single().satellitesInUse)
+        assertEquals(0.042, samples.single().horizontalAccuracyMeters ?: 0.0, 0.000001)
+    }
+
+    @Test
     fun drainPendingReturnsWholeBacklogInArrivalOrder() {
         val client = FakeExternalGnssByteStreamClient()
         val provider = ExternalGnssLocationProvider(client, ExternalGnssProtocol.Nmea0183)
@@ -85,6 +138,11 @@ class ExternalGnssLocationProviderTest {
         const val RMC_SENTENCE = "\$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A\r\n"
         const val RMC_SENTENCE_LATER = "\$GPRMC,123520,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*60\r\n"
     }
+}
+
+private fun sentence(payload: String): String {
+    val checksum = payload.fold(0) { current, char -> current xor char.code }
+    return "\$$payload*${checksum.toString(16).uppercase().padStart(2, '0')}\r\n"
 }
 
 /**

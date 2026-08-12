@@ -104,6 +104,23 @@ class GpsFixtureLibraryTest {
     }
 
     @Test
+    fun qualitySummaryCountsGnssEpochsInsteadOfNmeaSentences() {
+        val base = GpsFixtureLibrary.cleanTenLoop().first()
+        val samples = listOf(
+            base.copy(elapsedMillis = 1_000L),
+            base.copy(elapsedMillis = 1_000L),
+            base.copy(elapsedMillis = 1_100L),
+            base.copy(elapsedMillis = 1_100L),
+            base.copy(elapsedMillis = 1_200L),
+        )
+
+        val summary = GpsQualitySummary.from(samples)
+
+        assertEquals(5, summary.sampleCount)
+        assertEquals(10.0, summary.averageUpdateRateHz, 0.000001)
+    }
+
+    @Test
     fun degradedSamplesAreCounted() {
         val outlier = GpsFixtureLibrary.scenario("one-outlier-loop").samples
         val summary = GpsQualitySummary.from(outlier)
