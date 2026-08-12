@@ -828,11 +828,10 @@ private fun MarkingLiveSection(
 /**
  * Fixed nearby-location canvas for the stationary Drive page.
  *
- * It intentionally draws no invented roads or external tiles. Until a real
- * basemap provider is selected, the stable few-hundred-meter viewport shows
- * the live fix, its accuracy, a scale grid, and any selected course geometry
- * that falls nearby. The viewport therefore remains useful and visually
- * stable even when no Track is selected.
+ * The stable few-hundred-meter viewport shows the live fix, its accuracy, a
+ * scale grid, and any selected course geometry that falls nearby. Platforms
+ * may draw a road basemap underneath those shared overlays; when no basemap is
+ * available, the grid keeps the viewport useful and visually stable.
  */
 @Composable
 private fun NearbyLocationPreview(
@@ -854,6 +853,7 @@ private fun NearbyLocationPreview(
     val filteredPosition = rememberFilteredLivePosition("drive-nearby-map", livePosition)
     val current = rememberSmoothedLivePosition("drive-nearby-map", filteredPosition)
     val center = current?.let { GeoPoint(it.latitude, it.longitude) }
+    val basemapCenter = filteredPosition?.toNearbyBasemapCenter()
     val projection = remember(center?.latitude, center?.longitude) {
         center?.let(::LocalProjection)
     }
@@ -866,6 +866,13 @@ private fun NearbyLocationPreview(
     val s = strings
 
     val content: @Composable BoxScope.() -> Unit = {
+        if (basemapCenter != null) {
+            PlatformNearbyBasemap(
+                center = basemapCenter,
+                spanMeters = NearbyMapSpanMeters,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         Canvas(Modifier.fillMaxSize()) {
             val pxPerMeter = minOf(size.width, size.height) / NearbyMapSpanMeters.toFloat()
             val mapCenter = Offset(size.width / 2f, size.height / 2f)
