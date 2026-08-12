@@ -19,7 +19,9 @@ authoritative source for position, accuracy, course geometry, and timing.
    scale, and selected-course overlay above the platform basemap.
 7. Reuse the same basemap and geographic projection while marking a new track
    in portrait and landscape, with the captured path drawn above the map.
-8. Do not add a Google API key, third-party SDK, geocoding, routing, traffic,
+8. Fit the post-marking Track Review geometry into the native basemap and draw
+   the raw trace, reference path, start line, finish line, and sectors above it.
+9. Do not add a Google API key, third-party SDK, geocoding, routing, traffic,
    analytics, or a second location manager.
 
 ## Behavior

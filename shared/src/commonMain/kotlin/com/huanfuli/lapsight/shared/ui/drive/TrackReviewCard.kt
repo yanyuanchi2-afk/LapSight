@@ -1,5 +1,7 @@
 package com.huanfuli.lapsight.shared.ui.drive
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -12,18 +14,27 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.huanfuli.lapsight.shared.LocationSource
-import com.huanfuli.lapsight.shared.review.buildTrackTraceLayers
+import com.huanfuli.lapsight.shared.lap.GeoPoint
+import com.huanfuli.lapsight.shared.lap.LocalProjection
+import com.huanfuli.lapsight.shared.session.GeoPointDto
 import com.huanfuli.lapsight.shared.track.CourseTopology
-import com.huanfuli.lapsight.shared.track.SectorLineDto
 import com.huanfuli.lapsight.shared.track.TrackReviewState
 import com.huanfuli.lapsight.shared.ui.CloseActionIcon
 import com.huanfuli.lapsight.shared.ui.DeleteActionIcon
@@ -33,7 +44,6 @@ import com.huanfuli.lapsight.shared.ui.LapSightTheme
 import com.huanfuli.lapsight.shared.ui.LocalizedStrings
 import com.huanfuli.lapsight.shared.ui.ReplayActionIcon
 import com.huanfuli.lapsight.shared.ui.SaveSessionIcon
-import com.huanfuli.lapsight.shared.ui.TraceView
 import com.huanfuli.lapsight.shared.ui.strings
 import com.huanfuli.lapsight.shared.ui.components.ChipTone
 import com.huanfuli.lapsight.shared.ui.components.DisclosureSection
@@ -395,34 +405,187 @@ private fun TrackReviewSourceChip(review: TrackReviewState) {
     }
 }
 
-/** The captured marking trace + extracted reference line + start/finish. */
+/** The captured marking trace + extracted reference line + timing lines over a road map. */
 @Composable
 private fun CapturedCourseMap(
     review: TrackReviewState,
     modifier: Modifier = Modifier,
     fillParent: Boolean = false,
 ) {
-    val layers = remember(review) {
-        val finishAsLine = review.finishLine?.let {
-            listOf(SectorLineDto("finish", "Finish", 999, it.pointA, it.pointB))
-        } ?: emptyList()
-        buildTrackTraceLayers(
-            markingSamples = review.extraction.markingSession.samples,
-            referenceLine = review.extraction.referenceLine,
-            startFinish = review.startFinish,
-            sectors = finishAsLine,
-            outlierSamples = emptyList(),
-            viewWidth = 400.0,
-            viewHeight = 300.0,
+    val geometry = remember(review) {
+        ReviewMapGeometry(
+            marking = review.extraction.markingSession.samples.map {
+                GeoPointDto(latitude = it.latitude, longitude = it.longitude)
+            },
+            reference = review.extraction.referenceLine?.points.orEmpty(),
+            referenceClosed = review.extraction.referenceLine?.isClosed == true,
+            startFinish = review.startFinish?.let { listOf(it.pointA, it.pointB) }.orEmpty(),
+            finish = review.finishLine?.let { listOf(it.pointA, it.pointB) }.orEmpty(),
+            sectors = review.sectors.map { listOf(it.pointA, it.pointB) },
         )
     }
-    if (layers.isNotEmpty()) {
-        TraceView(
-            layers = layers,
-            modifier = modifier,
-            minHeight = 200.dp,
-            maxHeight = 260.dp,
-            fillParent = fillParent,
-        )
+    val containerModifier = if (fillParent) {
+        modifier.fillMaxSize()
+    } else {
+        modifier.fillMaxWidth().height(260.dp)
     }
+    val outlineColor = MaterialTheme.colorScheme.surface
+    val markingColor = LapSightTheme.colors.traceMarking
+    val referenceColor = LapSightTheme.colors.traceReference
+    val startFinishColor = LapSightTheme.colors.traceStartFinish
+    val finishColor = LapSightTheme.colors.traceSector
+
+    Surface(
+        modifier = containerModifier,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, LapSightTheme.colors.cardBorder),
+    ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val aspect = if (
+                maxWidth.value.isFinite() && maxHeight.value.isFinite() && maxHeight.value > 0f
+            ) {
+                maxWidth.value.toDouble() / maxHeight.value.toDouble()
+            } else {
+                4.0 / 3.0
+            }
+            val viewport = remember(geometry, aspect) {
+                trackReviewMapViewport(geometry.allPoints, aspect)
+            }
+            if (viewport != null) {
+                val projection = remember(
+                    viewport.centerWgs84.latitude,
+                    viewport.centerWgs84.longitude,
+                ) {
+                    LocalProjection(
+                        GeoPoint(
+                            viewport.centerWgs84.latitude,
+                            viewport.centerWgs84.longitude,
+                        ),
+                    )
+                }
+                PlatformNearbyBasemap(
+                    provider = NearbyBasemapProvider.PlatformDefault,
+                    centerWgs84 = viewport.centerWgs84,
+                    spanMeters = viewport.spanMeters,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Canvas(Modifier.fillMaxSize()) {
+                    val pxPerMeter = size.minDimension / viewport.spanMeters.toFloat()
+                    val mapCenter = Offset(size.width / 2f, size.height / 2f)
+                    drawReviewPath(
+                        geometry.marking,
+                        projection,
+                        mapCenter,
+                        pxPerMeter,
+                        outlineColor,
+                        markingColor,
+                        outerWidth = 7f,
+                        innerWidth = 3f,
+                    )
+                    drawReviewPath(
+                        geometry.reference,
+                        projection,
+                        mapCenter,
+                        pxPerMeter,
+                        outlineColor,
+                        referenceColor,
+                        outerWidth = 11f,
+                        innerWidth = 7f,
+                        closed = geometry.referenceClosed,
+                    )
+                    geometry.sectors.forEach { sector ->
+                        drawReviewPath(
+                            sector,
+                            projection,
+                            mapCenter,
+                            pxPerMeter,
+                            outlineColor,
+                            finishColor,
+                            outerWidth = 7f,
+                            innerWidth = 4f,
+                        )
+                    }
+                    drawReviewPath(
+                        geometry.startFinish,
+                        projection,
+                        mapCenter,
+                        pxPerMeter,
+                        outlineColor,
+                        startFinishColor,
+                        outerWidth = 9f,
+                        innerWidth = 5f,
+                    )
+                    drawReviewPath(
+                        geometry.finish,
+                        projection,
+                        mapCenter,
+                        pxPerMeter,
+                        outlineColor,
+                        finishColor,
+                        outerWidth = 9f,
+                        innerWidth = 5f,
+                    )
+                }
+            } else {
+                Text(
+                    text = strings.waitingForFirstGpsFix,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+        }
+    }
+}
+
+private data class ReviewMapGeometry(
+    val marking: List<GeoPointDto>,
+    val reference: List<GeoPointDto>,
+    val referenceClosed: Boolean,
+    val startFinish: List<GeoPointDto>,
+    val finish: List<GeoPointDto>,
+    val sectors: List<List<GeoPointDto>>,
+) {
+    val allPoints: List<GeoPointDto> =
+        marking + reference + startFinish + finish + sectors.flatten()
+}
+
+private fun DrawScope.drawReviewPath(
+    points: List<GeoPointDto>,
+    projection: LocalProjection,
+    mapCenter: Offset,
+    pxPerMeter: Float,
+    outlineColor: Color,
+    lineColor: Color,
+    outerWidth: Float,
+    innerWidth: Float,
+    closed: Boolean = false,
+) {
+    val valid = points.filter { point ->
+        point.latitude.isFinite() && point.longitude.isFinite() &&
+            point.latitude in -90.0..90.0 && point.longitude in -180.0..180.0
+    }
+    if (valid.size < 2) return
+    val path = Path()
+    valid.forEachIndexed { index, point ->
+        val local = projection.toLocal(GeoPoint(point.latitude, point.longitude))
+        val canvasPoint = Offset(
+            x = mapCenter.x + local.x.toFloat() * pxPerMeter,
+            y = mapCenter.y - local.y.toFloat() * pxPerMeter,
+        )
+        if (index == 0) path.moveTo(canvasPoint.x, canvasPoint.y)
+        else path.lineTo(canvasPoint.x, canvasPoint.y)
+    }
+    if (closed) path.close()
+    drawPath(
+        path = path,
+        color = outlineColor,
+        style = Stroke(width = outerWidth, cap = StrokeCap.Round),
+    )
+    drawPath(
+        path = path,
+        color = lineColor,
+        style = Stroke(width = innerWidth, cap = StrokeCap.Round),
+    )
 }
