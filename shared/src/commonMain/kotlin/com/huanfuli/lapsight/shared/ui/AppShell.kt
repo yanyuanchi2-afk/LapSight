@@ -16,6 +16,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,9 +29,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import com.huanfuli.lapsight.shared.DashOrientation
+import com.huanfuli.lapsight.shared.HudRemoteCommand
+import com.huanfuli.lapsight.shared.HudMarkingLog
+import com.huanfuli.lapsight.shared.HudCourseBundle
+import com.huanfuli.lapsight.shared.buildHudCourseBundle
+import com.huanfuli.lapsight.shared.HudRuntimeState
+import com.huanfuli.lapsight.shared.HudSessionPhase
+import com.huanfuli.lapsight.shared.HudTimingTelemetry
+import com.huanfuli.lapsight.shared.HudTimingLog
 import com.huanfuli.lapsight.shared.DriveDisplayController
 import com.huanfuli.lapsight.shared.DriveDisplaySettings
 import com.huanfuli.lapsight.shared.LocationFeedMode
+import com.huanfuli.lapsight.shared.NoOpNtripActions
+import com.huanfuli.lapsight.shared.NtripActions
+import com.huanfuli.lapsight.shared.NtripConnectionState
+import com.huanfuli.lapsight.shared.NtripSettings
 import com.huanfuli.lapsight.shared.LocationSampleProvider
 import com.huanfuli.lapsight.shared.LocationSource
 import com.huanfuli.lapsight.shared.OrientationController
@@ -51,6 +64,8 @@ import com.huanfuli.lapsight.shared.session.SessionController
 import com.huanfuli.lapsight.shared.session.SourceMetadata
 import com.huanfuli.lapsight.shared.storage.InMemorySessionStore
 import com.huanfuli.lapsight.shared.storage.LocalSessionStore
+import com.huanfuli.lapsight.shared.storage.LoadResult
+import com.huanfuli.lapsight.shared.track.CurrentTrackSelection
 import com.huanfuli.lapsight.shared.ui.components.LapDialog
 import com.huanfuli.lapsight.shared.ui.components.LapDialogTextButton
 import com.huanfuli.lapsight.shared.ui.drive.DriveScreen
@@ -95,6 +110,9 @@ fun AppShell(
     externalGnssProvider: LocationSampleProvider? = null,
     externalGnssConnectionState: StateFlow<ExternalGnssConnectionState> =
         MutableStateFlow(ExternalGnssConnectionState(phase = ExternalGnssConnectionPhase.Disconnected)),
+    ntripSettings: StateFlow<NtripSettings> = MutableStateFlow(NtripSettings()),
+    ntripConnectionState: StateFlow<NtripConnectionState> = MutableStateFlow(NtripConnectionState()),
+    ntripActions: NtripActions = NoOpNtripActions,
     phoneGpsPermission: PhoneGpsPermissionState = PhoneGpsPermissionState(),
     sessionStore: LocalSessionStore = InMemorySessionStore(),
     exportShareTarget: ExportShareTarget = NoOpExportShareTarget,
@@ -108,12 +126,24 @@ fun AppShell(
     glassesPage: StateFlow<HudPage> = MutableStateFlow(HudPage.FOCUSED),
     glassesActions: GlassesActions = NoOpGlassesActions,
     onGlassesIdleGpsStateChanged: (GlassesGpsState) -> Unit = {},
+    onExternalGnssRescan: () -> Unit = {},
+    onExternalGnssDisconnect: () -> Unit = {},
     onTimingForegroundChanged: (Boolean, LocationFeedMode) -> Unit = { _, _ -> },
+    hudRuntimeState: StateFlow<HudRuntimeState?> = MutableStateFlow(null),
+    hudTimingTelemetry: StateFlow<HudTimingTelemetry> = MutableStateFlow(HudTimingTelemetry()),
+    hudMarkingLog: StateFlow<HudMarkingLog?> = MutableStateFlow(null),
+    hudTimingLog: StateFlow<HudTimingLog?> = MutableStateFlow(null),
+    onHudCommandRequested: (HudRemoteCommand) -> Unit = {},
+    onHudCourseBundleRequested: (HudCourseBundle) -> Unit = {},
+    onHudTimingResultHandled: () -> Unit = {},
 ) {
     val s = strings
     var tab by remember { mutableStateOf(AppTab.Drive) }
     var orientation by remember { mutableStateOf(DashOrientation.Portrait) }
     var savedVersion by remember { mutableStateOf(0L) }
+    val externalConnection by externalGnssConnectionState.collectAsState()
+    val remoteHudState by hudRuntimeState.collectAsState()
+    val recoveredHudTiming by hudTimingLog.collectAsState()
     val effectiveLocationFeedMode = when {
         displaySettings.locationFeedMode == LocationFeedMode.PhoneGps && phoneGpsProvider != null ->
             LocationFeedMode.PhoneGps
@@ -148,6 +178,28 @@ fun AppShell(
             },
         )
     }
+
+    // A connected HUD receives the exact selected immutable revision on cold
+    // connect and after Track save/edit. Phone-only mode never invokes this path.
+    LaunchedEffect(
+        effectiveLocationFeedMode,
+        externalConnection.phase,
+        savedVersion,
+    ) {
+        if (
+            effectiveLocationFeedMode != LocationFeedMode.ExternalGnss ||
+            externalConnection.phase != ExternalGnssConnectionPhase.Connected
+        ) return@LaunchedEffect
+        val selection = (sessionStore.loadCurrentSelection() as? LoadResult.Loaded)?.value
+        val profileId = selection?.profileId
+        if (profileId == null) {
+            onHudCommandRequested(HudRemoteCommand.CourseClear)
+            return@LaunchedEffect
+        }
+        val profile = (sessionStore.loadProfile(profileId) as? LoadResult.Loaded)?.value
+            ?: return@LaunchedEffect
+        buildHudCourseBundle(profile, selection.direction)?.let(onHudCourseBundleRequested)
+    }
     var recoveryPrompt by remember { mutableStateOf<DraftRecoveryPrompt?>(null) }
     var confirmDiscardDraft by remember { mutableStateOf(false) }
     var driveTimingActive by remember { mutableStateOf(false) }
@@ -159,6 +211,39 @@ fun AppShell(
     // On launch, surface an unfinished draft recovery prompt (D-15).
     LaunchedEffect(Unit) {
         recoveryPrompt = sessionController.loadUnfinishedDraft()
+    }
+
+    // The HUD's CRC-verified SD log is authoritative for External GNSS runs.
+    // Suppress any phone-side shadow draft prompt once that result is available.
+    LaunchedEffect(recoveredHudTiming?.sessionId, recoveredHudTiming?.crc32) {
+        if (recoveredHudTiming != null) {
+            sessionController.discardDraft()
+            recoveryPrompt = null
+        }
+    }
+
+    LaunchedEffect(
+        recoveryPrompt,
+        effectiveLocationFeedMode,
+        externalConnection.phase,
+        remoteHudState?.phase,
+    ) {
+        val prompt = recoveryPrompt ?: return@LaunchedEffect
+        if (
+            effectiveLocationFeedMode == LocationFeedMode.ExternalGnss &&
+            externalConnection.phase == ExternalGnssConnectionPhase.Connected &&
+            remoteHudState?.phase in setOf(HudSessionPhase.Timing, HudSessionPhase.Paused) &&
+            DraftRecoveryAction.Resume in prompt.availableActions
+        ) {
+            recoveryBusy = true
+            withContext(Dispatchers.Default) {
+                sessionController.handleRecoveryAction(prompt, DraftRecoveryAction.Resume)
+            }
+            recoveryPrompt = null
+            recoveryBusy = false
+            driveTimingActive = true
+            tab = AppTab.Drive
+        }
     }
 
     // Phase 7 MR-01 seam: hand the hoisted controller instance to MainActivity
@@ -373,12 +458,14 @@ fun AppShell(
                     phoneGpsPermission = phoneGpsPermission,
                     sessionStore = sessionStore,
                     sessionController = sessionController,
-                    glassesConnectionState = glassesConnectionState,
-                    glassesSelectedDeviceId = glassesSelectedDeviceId,
-                    glassesCastingEnabled = glassesCastingEnabled,
-                    glassesPage = glassesPage,
-                    glassesActions = glassesActions,
                     onGlassesIdleGpsStateChanged = onGlassesIdleGpsStateChanged,
+                    externalGnssConnectionState = externalGnssConnectionState,
+                    hudRuntimeState = hudRuntimeState,
+                    hudTimingTelemetry = hudTimingTelemetry,
+                    hudMarkingLog = hudMarkingLog,
+                    hudTimingLog = hudTimingLog,
+                    onHudCommandRequested = onHudCommandRequested,
+                    onHudTimingResultHandled = onHudTimingResultHandled,
                 )
                 AppTab.Review -> ReviewScreen(
                     sessionStore = sessionStore,
@@ -392,11 +479,18 @@ fun AppShell(
                     phoneGpsPermissionGranted = phoneGpsPermission.isGranted,
                     externalGnssAvailable = externalGnssProvider != null,
                     externalGnssConnectionState = externalGnssConnectionState,
+                    ntripSettings = ntripSettings,
+                    ntripConnectionState = ntripConnectionState,
+                    ntripActions = ntripActions,
                     locationFeedLocked = driveTimingActive,
                     glassesConnectionState = glassesConnectionState,
                     glassesDevices = glassesDevices,
                     glassesSelectedDeviceId = glassesSelectedDeviceId,
+                    glassesCastingEnabled = glassesCastingEnabled,
+                    glassesPage = glassesPage,
                     glassesActions = glassesActions,
+                    onExternalGnssRescan = onExternalGnssRescan,
+                    onExternalGnssDisconnect = onExternalGnssDisconnect,
                     onRequestPhoneGps = {
                         pendingPhoneGpsSelection = true
                         phoneGpsPermission.requestPermission()

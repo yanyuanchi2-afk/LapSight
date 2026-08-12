@@ -5,6 +5,7 @@ import com.huanfuli.lapsight.shared.LocationSampleProvider
 import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionPhase
 import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionState
 import com.huanfuli.lapsight.shared.external.ExternalGnssProtocol
+import com.huanfuli.lapsight.shared.external.ExternalGnssReceiverIdentity
 import com.huanfuli.lapsight.shared.external.ExternalGnssTelemetryMetadata
 import com.huanfuli.lapsight.shared.external.ExternalGnssTransport
 import com.huanfuli.lapsight.shared.external.Nmea0183ParseResult
@@ -122,6 +123,11 @@ class ExternalGnssLocationProvider(
         _connectionState.value = _connectionState.value.copy(phase = phase)
     }
 
+    /** Attach the connected receiver identity (name/address) for the device UI. */
+    fun updateReceiver(identity: ExternalGnssReceiverIdentity?) {
+        _connectionState.value = _connectionState.value.copy(receiver = identity)
+    }
+
     private fun handleBytes(bytes: ByteArray) {
         if (!running) return
         when (protocol) {
@@ -150,6 +156,16 @@ class ExternalGnssLocationProvider(
     private fun enqueue(sample: LocationSample?) {
         if (sample == null) return
         synchronized(queue) {
+            // RMC/GGA/GST/PQTMEPE can each yield an updated snapshot for the
+            // same GNSS UTC epoch. Keep the newest, most complete snapshot so
+            // downstream consumers see one LocationSample per receiver fix.
+            if (protocol == ExternalGnssProtocol.Nmea0183 &&
+                queue.lastOrNull()?.elapsedMillis == sample.elapsedMillis
+            ) {
+                queue.removeLast()
+                queue.addLast(sample)
+                return
+            }
             // Bounded so a 25 Hz burst (RaceBox) or a reconnect backlog can never
             // grow the queue unboundedly between poll ticks (D-06 high-rate coverage).
             while (queue.size >= MAX_QUEUE_SIZE) {

@@ -1,6 +1,7 @@
 package com.huanfuli.lapsight.shared.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,10 +31,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.huanfuli.lapsight.shared.DriveDisplaySettings
 import com.huanfuli.lapsight.shared.LanguageMode
 import com.huanfuli.lapsight.shared.LocationFeedMode
+import com.huanfuli.lapsight.shared.NoOpNtripActions
+import com.huanfuli.lapsight.shared.NtripActions
+import com.huanfuli.lapsight.shared.NtripConnectionPhase
+import com.huanfuli.lapsight.shared.NtripConnectionState
+import com.huanfuli.lapsight.shared.NtripSettings
 import com.huanfuli.lapsight.shared.SpeedUnit
 import com.huanfuli.lapsight.shared.ThemeMode
 import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionPhase
@@ -40,6 +49,7 @@ import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionState
 import com.huanfuli.lapsight.shared.glasses.GlassesActions
 import com.huanfuli.lapsight.shared.glasses.GlassesConnectionState
 import com.huanfuli.lapsight.shared.glasses.GlassesDeviceSummary
+import com.huanfuli.lapsight.shared.glasses.HudPage
 import com.huanfuli.lapsight.shared.glasses.NoOpGlassesActions
 import com.huanfuli.lapsight.shared.ui.components.LapCard
 import com.huanfuli.lapsight.shared.ui.components.LapButton
@@ -117,7 +127,7 @@ internal fun resolveSourceNote(
     strings: LocalizedStrings,
 ): String? = when {
     locationFeedLocked -> strings.locationLockedWhileTiming
-    effectiveLocationFeedMode == LocationFeedMode.ExternalGnss -> strings.externalGnssUnvalidatedNote
+    effectiveLocationFeedMode == LocationFeedMode.ExternalGnss -> strings.externalGnssNote
     !phoneGpsAvailable -> strings.phoneGpsUnavailable
     requestedLocationFeedMode == LocationFeedMode.PhoneGps && !phoneGpsPermissionGranted ->
         strings.phoneGpsPermissionRequired
@@ -139,13 +149,20 @@ internal fun SettingsScreen(
     externalGnssAvailable: Boolean = false,
     externalGnssConnectionState: StateFlow<ExternalGnssConnectionState> =
         MutableStateFlow(ExternalGnssConnectionState(phase = ExternalGnssConnectionPhase.Disconnected)),
+    ntripSettings: StateFlow<NtripSettings> = MutableStateFlow(NtripSettings()),
+    ntripConnectionState: StateFlow<NtripConnectionState> = MutableStateFlow(NtripConnectionState()),
+    ntripActions: NtripActions = NoOpNtripActions,
     locationFeedLocked: Boolean,
     glassesConnectionState: StateFlow<GlassesConnectionState> =
         MutableStateFlow(GlassesConnectionState.Idle),
     glassesDevices: StateFlow<List<GlassesDeviceSummary>> =
         MutableStateFlow(emptyList()),
     glassesSelectedDeviceId: StateFlow<String?> = MutableStateFlow(null),
+    glassesCastingEnabled: StateFlow<Boolean> = MutableStateFlow(false),
+    glassesPage: StateFlow<HudPage> = MutableStateFlow(HudPage.FOCUSED),
     glassesActions: GlassesActions = NoOpGlassesActions,
+    onExternalGnssRescan: () -> Unit = {},
+    onExternalGnssDisconnect: () -> Unit = {},
     onRequestPhoneGps: () -> Unit,
     onSettingsChanged: (DriveDisplaySettings) -> Unit,
 ) {
@@ -169,6 +186,29 @@ internal fun SettingsScreen(
             color = MaterialTheme.colorScheme.onBackground,
             style = MaterialTheme.typography.headlineMedium,
         )
+
+        Text(
+            text = s.devices,
+            color = MaterialTheme.colorScheme.onBackground,
+            style = MaterialTheme.typography.titleLarge,
+        )
+
+        GlassesSettingsCard(
+            connectionState = glassesConnectionState,
+            devices = glassesDevices,
+            selectedDeviceId = glassesSelectedDeviceId,
+            castingEnabled = glassesCastingEnabled,
+            page = glassesPage,
+            actions = glassesActions,
+        )
+
+        if (externalGnssAvailable) {
+            ExternalGnssSettingsCard(
+                connectionState = externalGnssConnectionState,
+                onRescan = onExternalGnssRescan,
+                onDisconnect = onExternalGnssDisconnect,
+            )
+        }
 
         LapCard(title = s.units) {
             SegmentedControl(
@@ -255,7 +295,13 @@ internal fun SettingsScreen(
             }
         }
 
-        LapCard(title = s.theme) {
+        Text(
+            text = s.displayAndDash,
+            color = MaterialTheme.colorScheme.onBackground,
+            style = MaterialTheme.typography.titleLarge,
+        )
+
+        LapCard(title = s.display) {
             SegmentedControl(
                 options = listOf(s.themeSystem, s.themeDark, s.themeLight),
                 selectedIndex = when (settings.themeMode) {
@@ -275,27 +321,10 @@ internal fun SettingsScreen(
                     )
                 },
             )
-        }
-
-        LapCard(title = s.languageTitle) {
             LanguageSelector(
                 selected = settings.languageMode,
                 onSelect = { mode -> onSettingsChanged(settings.copy(languageMode = mode)) },
             )
-        }
-
-        GlassesSettingsCard(
-            connectionState = glassesConnectionState,
-            devices = glassesDevices,
-            selectedDeviceId = glassesSelectedDeviceId,
-            actions = glassesActions,
-        )
-
-        if (externalGnssAvailable) {
-            ExternalGnssSettingsCard(connectionState = externalGnssConnectionState)
-        }
-
-        LapCard(title = s.whileTiming) {
             LapSwitchRow(
                 label = s.fullscreenWhileTiming,
                 checked = settings.fullscreenWhileTiming,
@@ -329,6 +358,18 @@ internal fun SettingsScreen(
             )
         }
 
+        Text(
+            text = s.experimental,
+            color = MaterialTheme.colorScheme.onBackground,
+            style = MaterialTheme.typography.titleLarge,
+        )
+
+        RtkExperimentalCard(
+            ntripSettings = ntripSettings,
+            ntripConnectionState = ntripConnectionState,
+            ntripActions = ntripActions,
+        )
+
         SafetyNote(
             text = s.safetySettings,
         )
@@ -341,15 +382,20 @@ private fun GlassesSettingsCard(
     connectionState: StateFlow<GlassesConnectionState>,
     devices: StateFlow<List<GlassesDeviceSummary>>,
     selectedDeviceId: StateFlow<String?>,
+    castingEnabled: StateFlow<Boolean>,
+    page: StateFlow<HudPage>,
     actions: GlassesActions,
 ) {
     val state by connectionState.collectAsState()
     val deviceList by devices.collectAsState()
     val selectedId by selectedDeviceId.collectAsState()
+    val casting by castingEnabled.collectAsState()
+    val selectedPage by page.collectAsState()
     val spacing = LapSightTheme.spacing
     val s = strings
     val firmwareUpdateRequired = deviceList.any { it.requiresFirmwareUpdate }
     val appUpdateRequired = (state as? GlassesConnectionState.Error)?.datAppUpdateRequired == true
+    val hasSelectedDevice = selectedId != null
 
     LapCard(title = s.glasses) {
         Row(
@@ -416,15 +462,40 @@ private fun GlassesSettingsCard(
                 }
             }
         }
+
+        Spacer(Modifier.height(spacing.sm))
+        Text(
+            text = s.glassesHudMode,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
+        )
+        SegmentedControl(
+            options = listOf(s.glassesOff, s.hudDeltaOnly, s.hudFocused, s.hudTelemetry),
+            selectedIndex = if (casting && hasSelectedDevice) selectedPage.ordinal + 1 else 0,
+            onSelect = { index ->
+                if (index == 0) {
+                    actions.stopCasting()
+                } else {
+                    actions.setPage(HudPage.values()[index - 1])
+                    if (!(casting && hasSelectedDevice)) actions.startCasting()
+                }
+            },
+            optionEnabled = { index -> index == 0 || hasSelectedDevice },
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
 @Composable
 private fun ExternalGnssSettingsCard(
     connectionState: StateFlow<ExternalGnssConnectionState>,
+    onRescan: () -> Unit,
+    onDisconnect: () -> Unit,
 ) {
     val state by connectionState.collectAsState()
     val s = strings
+    val connected = state.phase == ExternalGnssConnectionPhase.Connected ||
+        state.phase == ExternalGnssConnectionPhase.Reconnecting
 
     LapCard(title = s.externalGnss) {
         Text(
@@ -432,6 +503,16 @@ private fun ExternalGnssSettingsCard(
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.bodyLarge,
         )
+        state.receiver?.let { receiver ->
+            Text(
+                text = "${s.currentDevice}: ${receiver.displayName}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         state.message.takeIf { state.phase == ExternalGnssConnectionPhase.Failed }?.let { message ->
             Text(
                 text = message,
@@ -441,7 +522,144 @@ private fun ExternalGnssSettingsCard(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(LapSightTheme.spacing.sm),
+        ) {
+            LapButton(
+                text = s.rescan,
+                onClick = onRescan,
+                style = LapButtonStyle.Secondary,
+                modifier = Modifier.weight(1f),
+            )
+            if (connected) {
+                LapButton(
+                    text = s.disconnect,
+                    onClick = onDisconnect,
+                    style = LapButtonStyle.Secondary,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
     }
+}
+
+/**
+ * RTK/NTRIP corrections live behind a collapsed card: it is an engineering
+ * experiment (LC29H test chain), not part of the default product flow, so
+ * ordinary users should never have to look at it.
+ */
+@Composable
+private fun RtkExperimentalCard(
+    ntripSettings: StateFlow<NtripSettings>,
+    ntripConnectionState: StateFlow<NtripConnectionState>,
+    ntripActions: NtripActions,
+) {
+    val savedNtripSettings by ntripSettings.collectAsState()
+    val correctionState by ntripConnectionState.collectAsState()
+    var draft by remember(savedNtripSettings) { mutableStateOf(savedNtripSettings) }
+    var expanded by remember { mutableStateOf(false) }
+    val s = strings
+    val chinese = s.language == AppLanguage.Chinese
+
+    LapCard(
+        title = s.rtkCorrections,
+        trailing = {
+            Text(
+                text = if (expanded) "▾" else "▸",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        onClick = { expanded = !expanded },
+    ) {
+        Text(
+            text = s.rtkExperimentalNote,
+            color = LapSightTheme.colors.statusCaution,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (expanded) {
+            Text(
+                text = ntripStatusLabel(correctionState, chinese),
+                color = if (correctionState.phase == NtripConnectionPhase.Streaming) {
+                    LapSightTheme.colors.statusReady
+                } else {
+                    LapSightTheme.colors.statusCaution
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+            LapSwitchRow(
+                label = if (chinese) "启用网络 RTK 修正" else "Enable network RTK corrections",
+                supporting = if (chinese) {
+                    "手机只转发 RTCM；LC29H/HUD 仍是权威定位源"
+                } else {
+                    "The phone only relays RTCM; LC29H/HUD remains authoritative"
+                },
+                checked = draft.enabled,
+                onCheckedChange = { draft = draft.copy(enabled = it) },
+            )
+            OutlinedTextField(
+                value = draft.host,
+                onValueChange = { draft = draft.copy(host = it) },
+                label = { Text(if (chinese) "服务器" else "Caster host") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = draft.port.toString(),
+                onValueChange = { value ->
+                    value.filter(Char::isDigit).toIntOrNull()?.let { port ->
+                        draft = draft.copy(port = port.coerceIn(1, 65535))
+                    }
+                },
+                label = { Text(if (chinese) "端口" else "Port") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = draft.mountpoint,
+                onValueChange = { draft = draft.copy(mountpoint = it) },
+                label = { Text(if (chinese) "挂载点" else "Mountpoint") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = draft.username,
+                onValueChange = { draft = draft.copy(username = it) },
+                label = { Text(if (chinese) "用户名" else "Username") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = draft.password,
+                onValueChange = { draft = draft.copy(password = it) },
+                label = { Text(if (chinese) "密码" else "Password") },
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            LapButton(
+                text = if (chinese) "保存并应用" else "Save and apply",
+                onClick = { ntripActions.apply(draft) },
+                style = LapButtonStyle.Secondary,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+private fun ntripStatusLabel(state: NtripConnectionState, chinese: Boolean): String {
+    val base = when (state.phase) {
+        NtripConnectionPhase.Disabled -> if (chinese) "未启用" else "Disabled"
+        NtripConnectionPhase.IncompleteConfiguration -> if (chinese) "配置不完整" else "Configuration incomplete"
+        NtripConnectionPhase.WaitingForHud -> if (chinese) "等待 HUD 连接" else "Waiting for HUD"
+        NtripConnectionPhase.Connecting -> if (chinese) "正在连接修正服务" else "Connecting to correction service"
+        NtripConnectionPhase.Streaming -> if (chinese) "正在向 LC29H 输入 RTCM" else "Streaming RTCM to LC29H"
+        NtripConnectionPhase.Failed -> if (chinese) "修正服务连接失败" else "Correction connection failed"
+    }
+    val detail = state.message?.takeIf { it.isNotBlank() }?.let { ": $it" }.orEmpty()
+    val bytes = if (state.receivedBytes > 0) " · ${state.receivedBytes} B" else ""
+    return base + bytes + detail
 }
 
 @Composable

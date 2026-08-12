@@ -12,6 +12,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,18 +22,35 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.huanfuli.lapsight.shared.DashOrientation
+import com.huanfuli.lapsight.shared.HudRemoteCommand
+import com.huanfuli.lapsight.shared.HudDisplayPage
+import com.huanfuli.lapsight.shared.HudMarkingLog
+import com.huanfuli.lapsight.shared.HudRuntimeState
+import com.huanfuli.lapsight.shared.HudTimingTelemetry
+import com.huanfuli.lapsight.shared.HudTimingLog
+import com.huanfuli.lapsight.shared.HudSessionPhase
 import com.huanfuli.lapsight.shared.DriveDisplaySettings
 import com.huanfuli.lapsight.shared.GpsFixStatus
 import com.huanfuli.lapsight.shared.LocationFeedMode
 import com.huanfuli.lapsight.shared.LocationSampleProvider
 import com.huanfuli.lapsight.shared.LocationSource
 import com.huanfuli.lapsight.shared.PhoneGpsPermissionState
+import com.huanfuli.lapsight.shared.nowEpochMillis
+import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionPhase
+import com.huanfuli.lapsight.shared.external.ExternalGnssConnectionState
+import com.huanfuli.lapsight.shared.ghost.DeltaDisplayState
 import com.huanfuli.lapsight.shared.session.RawRecordingController
+import com.huanfuli.lapsight.shared.session.AppMetadata
+import com.huanfuli.lapsight.shared.session.HudTimingReviewImportResult
 import com.huanfuli.lapsight.shared.session.SaveDraftResult
 import com.huanfuli.lapsight.shared.session.SessionController
+import com.huanfuli.lapsight.shared.session.SourceMetadata
 import com.huanfuli.lapsight.shared.session.StartTimingResult
 import com.huanfuli.lapsight.shared.session.TimingRunSnapshot
+import com.huanfuli.lapsight.shared.session.buildHudTimingReviewPayload
 import com.huanfuli.lapsight.shared.storage.LocalSessionStore
+import com.huanfuli.lapsight.shared.storage.LoadResult
+import com.huanfuli.lapsight.shared.storage.SaveResult
 import com.huanfuli.lapsight.shared.ui.CheckActionIcon
 import com.huanfuli.lapsight.shared.ui.CloseActionIcon
 import com.huanfuli.lapsight.shared.ui.DeleteActionIcon
@@ -45,11 +63,7 @@ import com.huanfuli.lapsight.shared.ui.START_TIMING_BLOCKED_COPY
 import com.huanfuli.lapsight.shared.ui.components.LapDialog
 import com.huanfuli.lapsight.shared.ui.components.LapDialogTextButton
 import com.huanfuli.lapsight.shared.ui.strings
-import com.huanfuli.lapsight.shared.glasses.GlassesActions
-import com.huanfuli.lapsight.shared.glasses.GlassesConnectionState
 import com.huanfuli.lapsight.shared.glasses.GlassesGpsState
-import com.huanfuli.lapsight.shared.glasses.HudPage
-import com.huanfuli.lapsight.shared.glasses.NoOpGlassesActions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -83,13 +97,15 @@ fun DriveScreen(
     phoneGpsPermission: PhoneGpsPermissionState,
     sessionStore: LocalSessionStore,
     sessionController: SessionController,
-    glassesConnectionState: StateFlow<GlassesConnectionState> =
-        MutableStateFlow(GlassesConnectionState.Idle),
-    glassesSelectedDeviceId: StateFlow<String?> = MutableStateFlow(null),
-    glassesCastingEnabled: StateFlow<Boolean> = MutableStateFlow(false),
-    glassesPage: StateFlow<HudPage> = MutableStateFlow(HudPage.FOCUSED),
-    glassesActions: GlassesActions = NoOpGlassesActions,
     onGlassesIdleGpsStateChanged: (GlassesGpsState) -> Unit = {},
+    externalGnssConnectionState: StateFlow<ExternalGnssConnectionState> =
+        MutableStateFlow(ExternalGnssConnectionState(phase = ExternalGnssConnectionPhase.Disconnected)),
+    hudRuntimeState: StateFlow<HudRuntimeState?> = MutableStateFlow(null),
+    hudTimingTelemetry: StateFlow<HudTimingTelemetry> = MutableStateFlow(HudTimingTelemetry()),
+    hudMarkingLog: StateFlow<HudMarkingLog?> = MutableStateFlow(null),
+    hudTimingLog: StateFlow<HudTimingLog?> = MutableStateFlow(null),
+    onHudCommandRequested: (HudRemoteCommand) -> Unit = {},
+    onHudTimingResultHandled: () -> Unit = {},
 ) {
     val s = strings
     val controller = remember(locationProvider, sessionStore) {
@@ -106,6 +122,7 @@ fun DriveScreen(
         )
     }
     var timingRun by remember { mutableStateOf(restoredTimingRun) }
+    var localTimingPaused by remember { mutableStateOf(false) }
     var showStopSummary by remember { mutableStateOf(false) }
     var confirmDiscardSession by remember { mutableStateOf(false) }
     var saveToast by remember { mutableStateOf<String?>(null) }
@@ -121,10 +138,46 @@ fun DriveScreen(
     }
     var rawRecordingActive by remember { mutableStateOf(false) }
     var rawSnapshot by remember { mutableStateOf(rawController.snapshot()) }
+    val externalConnection by externalGnssConnectionState.collectAsState()
+    val remoteHudState by hudRuntimeState.collectAsState()
+    val remoteTiming by hudTimingTelemetry.collectAsState()
+    val downloadedHudMarking by hudMarkingLog.collectAsState()
+    val downloadedHudTiming by hudTimingLog.collectAsState()
+    val remoteTimingPaused = locationFeedMode == LocationFeedMode.ExternalGnss &&
+        remoteTiming.phase == HudSessionPhase.Paused
+    val timingPaused = if (locationFeedMode == LocationFeedMode.ExternalGnss) {
+        remoteTimingPaused
+    } else {
+        localTimingPaused
+    }
     // Conservative Ready preview for the dash (D-13/D-14/D-32). The authoritative
     // gate runs in SessionController.startTiming; this mirrors its thresholds over
     // the inputs the stationary dash can see so the user knows before tapping Start.
     val dashReady = dashReadyState(snapshot)
+    val displayedTimingRun = if (
+        locationFeedMode == LocationFeedMode.ExternalGnss &&
+        remoteTiming.phase in listOf(HudSessionPhase.Timing, HudSessionPhase.Paused)
+    ) {
+        timingRun.copy(
+            isActive = true,
+            lapCount = remoteTiming.lapCount,
+            currentLapNumber = remoteTiming.currentLapNumber,
+            currentLapMillis = remoteTiming.currentLapMillis.takeIf { it > 0L }
+                ?: remoteTiming.sessionElapsedMillis,
+            lastLapMillis = remoteTiming.lastLapMillis,
+            bestLapMillis = remoteTiming.bestLapMillis,
+            sessionElapsedMillis = remoteTiming.sessionElapsedMillis,
+            currentSectorNumber = remoteTiming.currentSectorNumber,
+            sectorCount = remoteTiming.sectorCount,
+            latestSectorName = remoteTiming.latestSectorMillis?.let {
+                "Sector ${maxOf(1, (remoteTiming.currentSectorNumber ?: 2) - 1)}"
+            },
+            latestSectorSplitMillis = remoteTiming.latestSectorMillis,
+            source = SourceMetadata(LocationSource.ExternalGnss, isSimulated = false),
+            deltaDisplay = remoteTiming.liveDeltaMillis?.let(DeltaDisplayState::fromDeltaMillis)
+                ?: DeltaDisplayState.UNAVAILABLE,
+        )
+    } else timingRun
     val ensureSelectedLocationFeedReady: () -> Boolean = {
         if (locationFeedMode == LocationFeedMode.PhoneGps && !phoneGpsPermission.isGranted) {
             startTimingBlockedMessage = s.phoneGpsPermissionRequired
@@ -138,6 +191,21 @@ fun DriveScreen(
 
     LaunchedEffect(timingActive) {
         onTimingActiveChanged(timingActive)
+    }
+
+    LaunchedEffect(downloadedHudTiming?.sessionId, downloadedHudTiming?.crc32) {
+        downloadedHudTiming?.let { result ->
+            // The live phone recorder is only a dashboard shadow in HUD mode.
+            // Replace it with the complete, CRC-verified SD result before the
+            // normal explicit Save/Discard decision is shown.
+            sessionController.discardDraft()
+            timingActive = false
+            timingSnapshot = null
+            timingRun = TimingRunSnapshot.inactive()
+            localTimingPaused = false
+            confirmDiscardSession = false
+            showStopSummary = true
+        }
     }
 
     LaunchedEffect(requestedTimingActive) {
@@ -160,14 +228,78 @@ fun DriveScreen(
         snapshot = controller.snapshot()
     }
 
-    val phoneGpsPrewarmActive =
-        locationFeedMode == LocationFeedMode.PhoneGps &&
-            phoneGpsPermission.isGranted &&
-            !timingActive &&
-            !rawRecordingActive
+    // Physical HUD controls and a reconnecting APP are alternate inputs to the
+    // same session. Adopt the authoritative HUD phase without inventing a
+    // separate companion-only user flow.
+    LaunchedEffect(
+        locationFeedMode,
+        externalConnection.phase,
+        remoteHudState?.phase,
+        snapshot.phase,
+    ) {
+        if (
+            locationFeedMode == LocationFeedMode.ExternalGnss &&
+            externalConnection.phase == ExternalGnssConnectionPhase.Connected
+        ) {
+            when (remoteHudState?.phase) {
+                HudSessionPhase.Marking -> if (snapshot.phase == DriveMarkingPhase.Idle) {
+                    controller.beginMarking()
+                    snapshot = controller.snapshot()
+                }
+                HudSessionPhase.Review -> if (snapshot.phase == DriveMarkingPhase.Capturing) {
+                    controller.stopMarking()
+                    snapshot = controller.snapshot()
+                }
+                HudSessionPhase.Timing,
+                HudSessionPhase.Paused,
+                -> {
+                    if (!locationProvider.isRunning) locationProvider.start()
+                    timingActive = true
+                }
+                HudSessionPhase.Idle -> if (timingActive) {
+                    timingActive = false
+                    localTimingPaused = false
+                }
+                null,
+                -> Unit
+            }
+        }
+    }
 
-    LaunchedEffect(phoneGpsPrewarmActive, locationProvider) {
-        if (phoneGpsPrewarmActive) {
+    // The live BLE/NMEA stream keeps the dashboard responsive, but after stop
+    // the complete SD log is the source of truth. Import it once its end-to-end
+    // CRC has passed, including after APP process death and reconnection.
+    LaunchedEffect(
+        locationFeedMode,
+        remoteHudState?.phase,
+        downloadedHudMarking?.path,
+        downloadedHudMarking?.crc32,
+    ) {
+        val log = downloadedHudMarking
+        if (
+            locationFeedMode == LocationFeedMode.ExternalGnss &&
+            remoteHudState?.phase == HudSessionPhase.Review &&
+            log != null
+        ) {
+            controller.reviewImportedMarking(log.samples)
+            snapshot = controller.snapshot()
+        }
+    }
+
+    // Keep the selected live backend warm while Drive is open. This is required
+    // for the HUD-as-dashboard flow: reopening a killed APP must reconnect and
+    // subscribe before the user starts another marking/timing action.
+    val passiveFeedPrewarmActive =
+        !timingActive &&
+            !rawRecordingActive &&
+            when (locationFeedMode) {
+                LocationFeedMode.PhoneGps -> phoneGpsPermission.isGranted
+                LocationFeedMode.ExternalGnss -> true
+                LocationFeedMode.Simulated -> false
+            }
+
+    LaunchedEffect(passiveFeedPrewarmActive, locationProvider) {
+        if (passiveFeedPrewarmActive) {
             if (!locationProvider.isRunning) {
                 locationProvider.start()
             }
@@ -202,7 +334,7 @@ fun DriveScreen(
     // Poll the provider on a timer while the demo feed runs (D-05). The feed
     // flows continuously as if the phone were physically moving around the
     // track, even before/after a marking capture or timing run.
-    LaunchedEffect(snapshot.isDemoFeedRunning, timingActive, rawRecordingActive) {
+    LaunchedEffect(snapshot.isDemoFeedRunning, timingActive, rawRecordingActive, timingPaused) {
         while (snapshot.isDemoFeedRunning || timingActive || rawRecordingActive) {
             delay(100L)
             if (rawRecordingActive) {
@@ -219,7 +351,7 @@ fun DriveScreen(
                 // controller (never recorderForTest) and read the timing/delta
                 // view back for the UI. Ingest every sample drained this tick so a
                 // buffered backlog is never dropped.
-                if (samples.isNotEmpty()) {
+                if (samples.isNotEmpty() && !timingPaused) {
                     withContext(Dispatchers.Default) {
                         recorderMutex.withLock {
                             samples.forEach { sessionController.ingestSample(it) }
@@ -245,9 +377,13 @@ fun DriveScreen(
                 when (val result = sessionController.overrideWrongCourseAndStart()) {
                     is StartTimingResult.Started -> {
                         controller.restartFeedForTiming()
+                        if (locationFeedMode == LocationFeedMode.ExternalGnss) {
+                            onHudCommandRequested(HudRemoteCommand.TimingStart)
+                        }
                         wrongCourseBlock = null
                         startTimingBlockedMessage = null
                         timingActive = true
+                        localTimingPaused = false
                         timingSnapshot = sessionController.snapshot()
                         timingRun = sessionController.timingRunSnapshot()
                         snapshot = controller.snapshot()
@@ -276,7 +412,8 @@ fun DriveScreen(
     // Stop summary sheet (D-14): one explicit Save/Discard choice, with the
     // destructive branch armed in place instead of opening a second dialog.
     if (showStopSummary) {
-        val laps = timingSnapshot?.activeDraft?.checkpointedLapCount ?: 0
+        val hudResult = downloadedHudTiming
+        val laps = hudResult?.lapCount ?: timingSnapshot?.activeDraft?.checkpointedLapCount ?: 0
         LapDialog(
             title = s.sessionEnded,
             text = if (confirmDiscardSession) {
@@ -305,6 +442,7 @@ fun DriveScreen(
                             confirmDiscardSession = false
                             showStopSummary = false
                             sessionController.discardDraft()
+                            if (hudResult != null) onHudTimingResultHandled()
                             timingActive = false
                             timingSnapshot = null
                             timingRun = TimingRunSnapshot.inactive()
@@ -323,21 +461,67 @@ fun DriveScreen(
                     onClick = {
                         saveInProgress = true
                         uiScope.launch {
-                            val result = withContext(Dispatchers.Default) {
-                                recorderMutex.withLock {
-                                    sessionController.saveStoppedDraft()
+                            if (hudResult != null) {
+                                val importResult = withContext(Dispatchers.Default) {
+                                    val profile = hudResult.profileId?.let { profileId ->
+                                        (sessionStore.loadProfile(profileId) as? LoadResult.Loaded)?.value
+                                    }
+                                    if (profile == null) {
+                                        HudTimingReviewImportResult.Rejected(
+                                            "Matching course profile is unavailable",
+                                        )
+                                    } else {
+                                        buildHudTimingReviewPayload(
+                                            log = hudResult,
+                                            profile = profile,
+                                            app = AppMetadata(
+                                                appVersion = "0.5.0",
+                                                platform = "Android/HUD",
+                                            ),
+                                            importedAtEpochMillis = nowEpochMillis(),
+                                        )
+                                    }
+                                }
+                                when (importResult) {
+                                    is HudTimingReviewImportResult.Ready -> {
+                                        val saved = withContext(Dispatchers.Default) {
+                                            sessionStore.saveTimingSession(
+                                                importResult.payload,
+                                                importResult.payload.app,
+                                            )
+                                        }
+                                        if (saved is SaveResult.Saved) {
+                                            confirmDiscardSession = false
+                                            showStopSummary = false
+                                            timingActive = false
+                                            timingSnapshot = null
+                                            timingRun = TimingRunSnapshot.inactive()
+                                            onHudTimingResultHandled()
+                                            saveToast = s.sessionSaved
+                                            onSavedSession()
+                                        }
+                                    }
+                                    is HudTimingReviewImportResult.Rejected -> {
+                                        saveToast = importResult.reason
+                                    }
+                                }
+                            } else {
+                                val result = withContext(Dispatchers.Default) {
+                                    recorderMutex.withLock {
+                                        sessionController.saveStoppedDraft()
+                                    }
+                                }
+                                if (result is SaveDraftResult.Saved) {
+                                    confirmDiscardSession = false
+                                    showStopSummary = false
+                                    timingActive = false
+                                    timingSnapshot = null
+                                    timingRun = TimingRunSnapshot.inactive()
+                                    saveToast = s.sessionSaved
+                                    onSavedSession()
                                 }
                             }
                             saveInProgress = false
-                            confirmDiscardSession = false
-                            showStopSummary = false
-                            timingActive = false
-                            timingSnapshot = null
-                            timingRun = TimingRunSnapshot.inactive()
-                            if (result is SaveDraftResult.Saved) {
-                                saveToast = s.sessionSaved
-                                onSavedSession()
-                            }
                         }
                     },
                 )
@@ -345,8 +529,22 @@ fun DriveScreen(
         )
     }
 
+    val renderedSnapshot = remoteHudState
+        ?.takeIf {
+            locationFeedMode == LocationFeedMode.ExternalGnss &&
+                externalConnection.phase == ExternalGnssConnectionPhase.Connected &&
+                it.phase == HudSessionPhase.Marking
+        }
+        ?.let {
+            snapshot.copy(
+                backendMarkingElapsedMillis = it.elapsedMillis,
+                backendMarkingPointCount = it.pointCount,
+            )
+        }
+        ?: snapshot
+
     DriveSurface(
-        snapshot = snapshot,
+        snapshot = renderedSnapshot,
         orientation = orientation,
         displaySettings = displaySettings,
         locationFeedMode = locationFeedMode,
@@ -403,8 +601,12 @@ fun DriveScreen(
                         // data this rewinds the replay; for phone GPS it clears
                         // queued fixes and resets session-relative elapsed time.
                         controller.restartFeedForTiming()
+                        if (locationFeedMode == LocationFeedMode.ExternalGnss) {
+                            onHudCommandRequested(HudRemoteCommand.TimingStart)
+                        }
                         startTimingBlockedMessage = null
                         timingActive = true
+                        localTimingPaused = false
                         timingSnapshot = sessionController.snapshot()
                         timingRun = sessionController.timingRunSnapshot()
                         snapshot = controller.snapshot()
@@ -424,12 +626,18 @@ fun DriveScreen(
         onBeginMarking = action@{
             if (!ensureSelectedLocationFeedReady()) return@action
             startTimingBlockedMessage = null
+            if (locationFeedMode == LocationFeedMode.ExternalGnss) {
+                onHudCommandRequested(HudRemoteCommand.MarkStart)
+            }
             controller.beginMarking()
             snapshot = controller.snapshot()
         },
         onStopMarking = {
             when (snapshot.phase) {
                 DriveMarkingPhase.Capturing -> {
+                    if (locationFeedMode == LocationFeedMode.ExternalGnss) {
+                        onHudCommandRequested(HudRemoteCommand.MarkStop)
+                    }
                     controller.stopMarking()
                     snapshot = controller.snapshot()
                 }
@@ -439,9 +647,28 @@ fun DriveScreen(
                 }
             }
         },
+        onToggleTimingPause = {
+            if (timingActive) {
+                if (locationFeedMode == LocationFeedMode.ExternalGnss) {
+                    onHudCommandRequested(
+                        if (remoteTimingPaused) HudRemoteCommand.TimingResume else HudRemoteCommand.TimingPause,
+                    )
+                } else if (localTimingPaused) {
+                    sessionController.resume()
+                    localTimingPaused = false
+                } else {
+                    sessionController.pause()
+                    localTimingPaused = true
+                }
+            }
+        },
         onStopTiming = {
             if (timingActive) {
+                if (locationFeedMode == LocationFeedMode.ExternalGnss) {
+                    onHudCommandRequested(HudRemoteCommand.TimingStop)
+                }
                 timingActive = false
+                localTimingPaused = false
                 confirmDiscardSession = false
                 uiScope.launch {
                     withContext(Dispatchers.Default) {
@@ -449,7 +676,9 @@ fun DriveScreen(
                             sessionController.stop()
                         }
                     }
-                    showStopSummary = true
+                    if (locationFeedMode != LocationFeedMode.ExternalGnss) {
+                        showStopSummary = true
+                    }
                 }
             }
         },
@@ -471,16 +700,25 @@ fun DriveScreen(
             }
         },
         timingActive = timingActive,
+        timingPaused = timingPaused,
         timingSnapshot = timingSnapshot,
-        timingRun = timingRun,
+        timingRun = displayedTimingRun,
         dashReady = dashReady,
         rawRecordingActive = rawRecordingActive,
         rawSnapshot = rawSnapshot,
-        glassesConnectionState = glassesConnectionState,
-        glassesSelectedDeviceId = glassesSelectedDeviceId,
-        glassesCastingEnabled = glassesCastingEnabled,
-        glassesPage = glassesPage,
-        glassesActions = glassesActions,
+        hudDisplayPage = remoteHudState?.displayPage.takeIf {
+            locationFeedMode == LocationFeedMode.ExternalGnss
+        },
+        onCycleHudDisplayPage = remoteHudState?.displayPage?.takeIf {
+            locationFeedMode == LocationFeedMode.ExternalGnss
+        }?.let { currentPage ->
+            {
+                val pages = HudDisplayPage.entries
+                onHudCommandRequested(
+                    HudRemoteCommand.DisplayPage(pages[(currentPage.ordinal + 1) % pages.size]),
+                )
+            }
+        },
         reviewContent = {
             TrackReviewContent(
                 snapshot = snapshot,

@@ -56,6 +56,9 @@ fun App(
     externalGnssProvider: LocationSampleProvider? = null,
     externalGnssConnectionState: StateFlow<ExternalGnssConnectionState> =
         MutableStateFlow(ExternalGnssConnectionState(phase = ExternalGnssConnectionPhase.Disconnected)),
+    ntripSettings: StateFlow<NtripSettings> = MutableStateFlow(NtripSettings()),
+    ntripConnectionState: StateFlow<NtripConnectionState> = MutableStateFlow(NtripConnectionState()),
+    ntripActions: NtripActions = NoOpNtripActions,
     phoneGpsPermission: PhoneGpsPermissionState = PhoneGpsPermissionState(),
     sessionStore: LocalSessionStore = InMemorySessionStore(),
     exportShareTarget: ExportShareTarget = NoOpExportShareTarget,
@@ -69,7 +72,16 @@ fun App(
     glassesPage: StateFlow<HudPage> = MutableStateFlow(HudPage.FOCUSED),
     glassesActions: GlassesActions = NoOpGlassesActions,
     onGlassesIdleGpsStateChanged: (GlassesGpsState) -> Unit = {},
+    onExternalGnssRescan: () -> Unit = {},
+    onExternalGnssDisconnect: () -> Unit = {},
     onTimingForegroundChanged: (Boolean, LocationFeedMode) -> Unit = { _, _ -> },
+    hudRuntimeState: StateFlow<HudRuntimeState?> = MutableStateFlow(null),
+    hudTimingTelemetry: StateFlow<HudTimingTelemetry> = MutableStateFlow(HudTimingTelemetry()),
+    hudMarkingLog: StateFlow<HudMarkingLog?> = MutableStateFlow(null),
+    hudTimingLog: StateFlow<HudTimingLog?> = MutableStateFlow(null),
+    onHudCommandRequested: (HudRemoteCommand) -> Unit = {},
+    onHudCourseBundleRequested: (HudCourseBundle) -> Unit = {},
+    onHudTimingResultHandled: () -> Unit = {},
 ) {
     var displaySettings by remember { mutableStateOf(displaySettingsStore.load()) }
     val simulatedGpsProvider = remember {
@@ -95,6 +107,9 @@ fun App(
                 phoneGpsProvider = phoneGpsProvider,
                 externalGnssProvider = externalGnssProvider,
                 externalGnssConnectionState = externalGnssConnectionState,
+                ntripSettings = ntripSettings,
+                ntripConnectionState = ntripConnectionState,
+                ntripActions = ntripActions,
                 phoneGpsPermission = phoneGpsPermission,
                 sessionStore = sessionStore,
                 exportShareTarget = exportShareTarget,
@@ -106,7 +121,16 @@ fun App(
                 glassesPage = glassesPage,
                 glassesActions = glassesActions,
                 onGlassesIdleGpsStateChanged = onGlassesIdleGpsStateChanged,
+                onExternalGnssRescan = onExternalGnssRescan,
+                onExternalGnssDisconnect = onExternalGnssDisconnect,
                 onTimingForegroundChanged = onTimingForegroundChanged,
+                hudRuntimeState = hudRuntimeState,
+                hudTimingTelemetry = hudTimingTelemetry,
+                hudMarkingLog = hudMarkingLog,
+                hudTimingLog = hudTimingLog,
+                onHudCommandRequested = onHudCommandRequested,
+                onHudCourseBundleRequested = onHudCourseBundleRequested,
+                onHudTimingResultHandled = onHudTimingResultHandled,
             )
         }
     }
