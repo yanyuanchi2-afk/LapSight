@@ -23,6 +23,25 @@ import kotlin.math.abs
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalForeignApi::class)
 @Composable
 internal actual fun PlatformNearbyBasemap(
+    provider: NearbyBasemapProvider,
+    centerWgs84: GeoPointDto,
+    spanMeters: Double,
+    modifier: Modifier,
+) {
+    // Reserved providers deliberately fall back to MapKit until their SDK
+    // renderers are added, so a future stored selection never creates a blank
+    // map after an app downgrade or partial rollout.
+    when (provider) {
+        NearbyBasemapProvider.PlatformDefault,
+        NearbyBasemapProvider.GoogleMaps,
+        NearbyBasemapProvider.AMap,
+        -> AppleMapKitNearbyBasemap(centerWgs84, spanMeters, modifier)
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalForeignApi::class)
+@Composable
+private fun AppleMapKitNearbyBasemap(
     center: GeoPointDto,
     spanMeters: Double,
     modifier: Modifier,

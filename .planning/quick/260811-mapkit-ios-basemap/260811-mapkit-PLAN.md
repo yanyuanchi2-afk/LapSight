@@ -11,9 +11,13 @@ authoritative source for position, accuracy, course geometry, and timing.
 1. Add a small common `expect` seam for a platform nearby basemap.
 2. Implement the seam with `MKMapView` through Compose `UIKitView` on iOS.
 3. Keep Android on the existing offline grid canvas with a no-op `actual`.
-4. Retain the shared accuracy circle, current-position marker, heading arrow,
+4. Reserve stable provider identifiers for Google Maps and AMap; unsupported
+   choices safely fall back to the platform default until their SDKs are added.
+5. Keep the provider contract in WGS-84; an AMap renderer must handle any
+   required GCJ-02 display conversion without changing recorded GPS data.
+6. Retain the shared accuracy circle, current-position marker, heading arrow,
    scale, and selected-course overlay above the platform basemap.
-5. Do not add a Google API key, third-party SDK, geocoding, routing, traffic,
+7. Do not add a Google API key, third-party SDK, geocoding, routing, traffic,
    analytics, or a second location manager.
 
 ## Behavior

@@ -868,7 +868,8 @@ private fun NearbyLocationPreview(
     val content: @Composable BoxScope.() -> Unit = {
         if (basemapCenter != null) {
             PlatformNearbyBasemap(
-                center = basemapCenter,
+                provider = NearbyBasemapProvider.PlatformDefault,
+                centerWgs84 = basemapCenter,
                 spanMeters = NearbyMapSpanMeters,
                 modifier = Modifier.fillMaxSize(),
             )

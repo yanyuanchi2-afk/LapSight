@@ -7,7 +7,8 @@ import com.huanfuli.lapsight.shared.session.GeoPointDto
 /** Android keeps the existing offline grid until an Android basemap is chosen. */
 @Composable
 internal actual fun PlatformNearbyBasemap(
-    center: GeoPointDto,
+    provider: NearbyBasemapProvider,
+    centerWgs84: GeoPointDto,
     spanMeters: Double,
     modifier: Modifier,
 ) = Unit

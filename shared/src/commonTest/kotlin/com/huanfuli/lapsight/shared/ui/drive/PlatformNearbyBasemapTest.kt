@@ -9,6 +9,22 @@ import kotlin.test.assertNull
 class PlatformNearbyBasemapTest {
 
     @Test
+    fun providerIdsAreStableAndUnknownValuesFallBack() {
+        assertEquals(
+            NearbyBasemapProvider.GoogleMaps,
+            NearbyBasemapProvider.fromStableId("google-maps"),
+        )
+        assertEquals(
+            NearbyBasemapProvider.AMap,
+            NearbyBasemapProvider.fromStableId("amap"),
+        )
+        assertEquals(
+            NearbyBasemapProvider.PlatformDefault,
+            NearbyBasemapProvider.fromStableId("future-provider"),
+        )
+    }
+
+    @Test
     fun validFixBecomesBasemapCenter() {
         val center = sample(latitude = 40.7128, longitude = -74.0060).toNearbyBasemapCenter()
 
