@@ -82,11 +82,13 @@ SHA-256 digest before relying on it.
 
 ## Verified configuration
 
-- Firmware integration version: `0.2.0-userdemo`
-- ESP-IDF project version: `2.0.0-lapsight.1`
+- Firmware integration version: `0.2.1-userdemo`
+- ESP-IDF project version: `2.0.0-lapsight.2`
 - Hardware: Cardputer ADV, 8 MB flash, Cap LoRa-1262/ATGM336H
 - BLE link: iPhone connection, MTU negotiation, notification subscription, and
   sustained fragmented NMEA delivery verified on physical hardware
+- GNSS parsing: supports the GPS/GNSS and BeiDou talker IDs emitted by the
+  ATGM336H multi-constellation receiver
 - LoRa: not initialized by the LapSight app
 
 ## Regenerating the launcher icon

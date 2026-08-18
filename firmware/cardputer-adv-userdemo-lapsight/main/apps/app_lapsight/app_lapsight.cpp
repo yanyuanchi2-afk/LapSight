@@ -19,7 +19,7 @@
 
 namespace {
 
-constexpr char kFirmwareVersion[] = "0.2.0-userdemo";
+constexpr char kFirmwareVersion[] = "0.2.1-userdemo";
 constexpr double kStationaryDisplayThresholdKmph = 3.0;
 
 bool endsWithSentenceType(const char* line, const char* type) {
@@ -61,6 +61,7 @@ void AppLapSight::onOpen() {
     _forwarded_nmea_lines.store(0);
     _dropped_nmea_lines.store(0);
     _last_display_millis = 0;
+    _last_diagnostic_millis = 0;
 
     GetHAL().canvas.setBaseColor(THEME_COLOR_BG);
     GetHAL().canvas.setFont(FONT_REPL);
@@ -92,6 +93,10 @@ void AppLapSight::onRunning() {
     if (now - _last_display_millis >= kDisplayRefreshMillis) {
         _last_display_millis = now;
         renderStatus();
+    }
+    if (now - _last_diagnostic_millis >= kDiagnosticLogMillis) {
+        _last_diagnostic_millis = now;
+        logGpsDiagnostics();
     }
 
     if (GetHAL().homeButton.wasClicked()) {
@@ -255,4 +260,35 @@ void AppLapSight::renderStatus() {
     );
 
     GetHAL().pushCanvas();
+}
+
+void AppLapSight::logGpsDiagnostics() {
+    TinyGPSPlus* gps = GetHAL().capLora868.borrowGPS();
+    if (!gps) {
+        return;
+    }
+
+    const uint32_t chars = gps->charsProcessed();
+    const uint32_t checksum_ok = gps->passedChecksum();
+    const uint32_t checksum_bad = gps->failedChecksum();
+    const uint32_t fixed_sentences = gps->sentencesWithFix();
+    const bool location_valid = gps->location.isValid();
+    const uint32_t location_age = gps->location.age();
+    const uint32_t satellites = gps->satellites.isValid()
+        ? gps->satellites.value()
+        : 0;
+    GetHAL().capLora868.returnGPS();
+
+    // Avoid logging raw NMEA because it contains the user's coordinates.
+    mclog::tagInfo(
+        getAppInfo().name,
+        "gps chars={} checksum_ok={} checksum_bad={} fixed_sentences={} location_valid={} age_ms={} sats={}",
+        chars,
+        checksum_ok,
+        checksum_bad,
+        fixed_sentences,
+        location_valid,
+        location_age,
+        satellites
+    );
 }

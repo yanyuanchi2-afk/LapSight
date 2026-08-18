@@ -26,6 +26,7 @@ public:
 private:
     static constexpr std::size_t kMaxNmeaLineBytes = 192;
     static constexpr uint32_t kDisplayRefreshMillis = 250;
+    static constexpr uint32_t kDiagnosticLogMillis = 5'000;
 
     LapSightBleNus _ble;
     std::array<char, kMaxNmeaLineBytes> _nmea_line{};
@@ -35,6 +36,7 @@ private:
     bool _ble_ready = false;
     int _gps_nmea_slot_id = -1;
     uint32_t _last_display_millis = 0;
+    uint32_t _last_diagnostic_millis = 0;
     std::atomic<uint32_t> _valid_nmea_lines{0};
     std::atomic<uint32_t> _forwarded_nmea_lines{0};
     std::atomic<uint32_t> _dropped_nmea_lines{0};
@@ -43,4 +45,5 @@ private:
     void acceptGpsByte(char byte);
     void forwardCompletedNmeaLine();
     void renderStatus();
+    void logGpsDiagnostics();
 };

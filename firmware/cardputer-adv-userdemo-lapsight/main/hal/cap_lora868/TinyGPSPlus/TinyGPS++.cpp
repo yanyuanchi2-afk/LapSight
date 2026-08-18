@@ -94,6 +94,7 @@ bool TinyGPSPlus::encode(char c)
     switch (c) {
         case ',':  // term terminators
             parity ^= (uint8_t)c;
+            [[fallthrough]];
         case '\r':
         case '\n':
         case '*': {
@@ -226,9 +227,12 @@ bool TinyGPSPlus::endOfTermHandler()
 
     // the first term determines the sentence type
     if (curTermNumber == 0) {
-        if (term[0] == 'G' && strchr("PNABL", term[1]) != NULL && !strcmp(term + 2, _RMCterm))
+        // ATGM336H is a multi-constellation receiver and may emit both the
+        // standard G* talkers and BeiDou B* talkers. Match the newer M5Stack
+        // TinyGPSPlus fork used by LapSight's known-good bring-up firmware.
+        if (strchr("GB", term[0]) && strchr("PNABLD", term[1]) != NULL && !strcmp(term + 2, _RMCterm))
             curSentenceType = GPS_SENTENCE_RMC;
-        else if (term[0] == 'G' && strchr("PNABL", term[1]) != NULL && !strcmp(term + 2, _GGAterm))
+        else if (strchr("GB", term[0]) && strchr("PNABLD", term[1]) != NULL && !strcmp(term + 2, _GGAterm))
             curSentenceType = GPS_SENTENCE_GGA;
         else
             curSentenceType = GPS_SENTENCE_OTHER;
