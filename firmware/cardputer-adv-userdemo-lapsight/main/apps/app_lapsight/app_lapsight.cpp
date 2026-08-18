@@ -6,6 +6,7 @@
 #include "app_lapsight.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 
 #include "assets/lapsight_big.h"
@@ -19,7 +20,7 @@
 
 namespace {
 
-constexpr char kFirmwareVersion[] = "0.2.1-userdemo";
+constexpr char kFirmwareVersion[] = "0.2.2-userdemo";
 constexpr double kStationaryDisplayThresholdKmph = 3.0;
 
 bool endsWithSentenceType(const char* line, const char* type) {
@@ -176,13 +177,9 @@ void AppLapSight::renderStatus() {
     canvas.setTextDatum(textdatum_t::top_left);
     canvas.setTextSize(1);
 
-    canvas.setCursor(3, 2);
-    canvas.setTextColor(TFT_CYAN, THEME_COLOR_BG);
-    canvas.printf("LapSight GNSS  %s", kFirmwareVersion);
-
     const bool ble_linked = _ble.isConnected();
     const bool ble_streaming = _ble.isSubscribed();
-    canvas.setCursor(3, 16);
+    canvas.setCursor(6, 8);
     canvas.setTextColor(
         ble_streaming ? TFT_GREEN : (ble_linked ? TFT_YELLOW : TFT_ORANGE),
         THEME_COLOR_BG
@@ -194,70 +191,35 @@ void AppLapSight::renderStatus() {
 
     TinyGPSPlus* gps = GetHAL().capLora868.borrowGPS();
     if (!gps) {
-        canvas.setCursor(3, 36);
+        canvas.setCursor(6, 30);
         canvas.setTextColor(TFT_RED, THEME_COLOR_BG);
-        canvas.print(_gps_ready ? "GPS unavailable" : "GNSS Cap init failed");
+        canvas.print(_gps_ready ? "GPS:UNAVAILABLE" : "GPS:ERROR");
         GetHAL().pushCanvas();
         return;
     }
 
     const bool fixed = gps->location.isValid() && gps->location.age() < 3000;
-    canvas.setCursor(133, 16);
+    canvas.setCursor(6, 30);
     canvas.setTextColor(fixed ? TFT_GREEN : TFT_ORANGE, THEME_COLOR_BG);
     canvas.printf("GPS:%s", fixed ? "FIX" : "SEARCH");
 
-    canvas.setTextSize(2);
-    canvas.setCursor(3, 30);
-    canvas.setTextColor(TFT_WHITE, THEME_COLOR_BG);
+    char speed_text[24];
     if (gps->speed.isValid() && gps->speed.age() < 3000) {
         const double raw_speed_kmph = gps->speed.kmph();
         const double display_speed_kmph = raw_speed_kmph < kStationaryDisplayThresholdKmph
             ? 0.0
             : raw_speed_kmph;
-        canvas.printf("%5.1f km/h", display_speed_kmph);
+        std::snprintf(speed_text, sizeof(speed_text), "%.1f km/h", display_speed_kmph);
     } else {
-        canvas.print("  --.- km/h");
+        std::snprintf(speed_text, sizeof(speed_text), "--.- km/h");
     }
 
-    canvas.setTextSize(1);
+    canvas.setTextSize(2);
+    canvas.setTextDatum(textdatum_t::middle_center);
     canvas.setTextColor(TFT_WHITE, THEME_COLOR_BG);
-    canvas.setCursor(3, 54);
-    if (gps->location.isValid()) {
-        canvas.printf("LAT %.6f", gps->location.lat());
-        canvas.setCursor(3, 67);
-        canvas.printf("LON %.6f", gps->location.lng());
-    } else {
-        canvas.print("LAT --");
-        canvas.setCursor(3, 67);
-        canvas.print("LON --");
-    }
-
-    canvas.setCursor(3, 81);
-    canvas.setTextColor((uint32_t)0x7EF8B0, THEME_COLOR_BG);
-    if (gps->satellites.isValid()) {
-        canvas.printf("SAT %lu", static_cast<unsigned long>(gps->satellites.value()));
-    } else {
-        canvas.print("SAT --");
-    }
-    canvas.setCursor(70, 81);
-    if (gps->hdop.isValid()) {
-        canvas.printf("HDOP %.1f", gps->hdop.hdop());
-    } else {
-        canvas.print("HDOP --");
-    }
+    canvas.drawString(speed_text, canvas.width() / 2, 76);
 
     GetHAL().capLora868.returnGPS();
-
-    canvas.setCursor(3, 95);
-    canvas.setTextColor((uint32_t)0xA2A1A1, THEME_COLOR_BG);
-    canvas.printf(
-        "NMEA %lu  BLE %lu  DROP %lu",
-        static_cast<unsigned long>(_valid_nmea_lines.load()),
-        static_cast<unsigned long>(_forwarded_nmea_lines.load()),
-        static_cast<unsigned long>(
-            _dropped_nmea_lines.load() + _ble.droppedNotificationCount()
-        )
-    );
 
     GetHAL().pushCanvas();
 }

@@ -82,8 +82,8 @@ SHA-256 digest before relying on it.
 
 ## Verified configuration
 
-- Firmware integration version: `0.2.1-userdemo`
-- ESP-IDF project version: `2.0.0-lapsight.2`
+- Firmware integration version: `0.2.2-userdemo`
+- ESP-IDF project version: `2.0.0-lapsight.3`
 - Hardware: Cardputer ADV, 8 MB flash, Cap LoRa-1262/ATGM336H
 - BLE link: iPhone connection, MTU negotiation, notification subscription, and
   sustained fragmented NMEA delivery verified on physical hardware
