@@ -34,7 +34,7 @@ We're building a clean-room shared lap engine that handles real-world telemetry 
 
 ## 🏎️ Current Status
 
-The app has completed the Phase 5 course-profile work and is in the Phase 5.1 field-validation / hardening gate. The Android app is runnable, supports a switchable Phone GPS / Simulated feed, and has been build-validated with Android Fused Location Provider wired into the existing shared provider interface.
+The app has completed the Phase 5 course-profile work and is in the Phase 5.1 field-validation / hardening gate. The Android app is runnable, supports a switchable Phone GPS / Simulated feed, and has been build-validated with Android Fused Location Provider wired into the existing shared provider interface. The iOS app can also receive live NMEA data from a Cardputer ADV over Bluetooth LE.
 
 Latest local Android builds have also been installed and launched on an ADB-connected Pixel 10 Pro. Remaining MVP gate work is real-world field evidence: outdoor Phone GPS validation, mounted-display UAT, and the final Go / Hardening Required / No-Go decision.
 
@@ -49,11 +49,11 @@ Latest local Android builds have also been installed and launched on an ADB-conn
 - **Course Rendering**: Track detail and editor rendering that use one beautified course map. Aspect-correct, zoom-to-fit course rendering for Drive, Review, and editor canvases.
 - **Theming**: System, Dark, and Light modes, plus unit and display preferences, backed by a shared semantic theme/component layer.
 - **Android GPS Integration**: Android Fused Location Provider feed mapped into the same shared `LocationSampleProvider` and `LocationSample` model used by the simulator. Runtime Android fine-location permission request path.
+- **Cardputer External GNSS**: Cardputer ADV + Cap LoRa-1262/ATGM336H firmware forwards raw GNSS NMEA over BLE, and the iOS app discovers, reconnects, parses, and identifies that receiver through the existing external-GNSS provider boundary.
 
 ### 🚧 Coming Soon
 - Live iOS Core Location feed.
 - Field-tested GPS smoothing and telemetry quality tuning.
-- External GNSS support.
 - Meta glasses HUD bridge.
 
 ---
@@ -66,6 +66,13 @@ Android now injects an `AndroidFusedLocationSampleProvider` into the same shared
 - 🧪 **Simulated**: Deterministic replay fixtures for regression testing, demos, and offline UAT.
 
 Both feeds produce the same shared `LocationSample` values and are persisted with explicit `LocationSource` provenance, so Review can distinguish real phone GPS sessions from simulated data.
+
+### Cardputer ADV external GNSS
+
+The preferred Cardputer firmware is a clean extension of M5Stack's factory-style Cardputer ADV UserDemo. It preserves the stock launcher and bundled applications, then adds `LapSight` as app 14. Opening it starts only the ATGM336H GNSS receiver and advertises `LapSight-Cardputer` over BLE Nordic UART; LoRa remains disabled in this app.
+
+- Firmware, build, flash, and recovery instructions: [`firmware/cardputer-adv-userdemo-lapsight/README.md`](firmware/cardputer-adv-userdemo-lapsight/README.md)
+- Initial standalone hardware bring-up firmware: [`firmware/cardputer-adv-gnss/README.md`](firmware/cardputer-adv-gnss/README.md)
 
 **Remaining real-GPS work:**
 - Validate Android Phone GPS outdoors on a closed course with the current Ready thresholds: 25 m horizontal accuracy, 15 s fix freshness, and 0.9 Hz minimum sample rate.
@@ -89,6 +96,7 @@ Both feeds produce the same shared `LocationSample` values and are persisted wit
 ```text
 LapSight/
 ├─ androidApp/   Android application package, manifest, and activity entry point
+├─ firmware/     Cardputer ADV external-GNSS firmware
 ├─ iosApp/       Xcode project and SwiftUI entry point
 ├─ shared/       Shared KMP domain logic, Compose UI, storage, and tests
 └─ .planning/    Project context, requirements, roadmap, phase plans, and state

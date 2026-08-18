@@ -1,0 +1,15 @@
+# Preserve the pinned upstream UserDemo snapshot byte-for-byte. Some generated
+# image/audio headers intentionally retain upstream CRLF and trailing spaces.
+** -whitespace
+
+# Enforce normal whitespace checks on LapSight-owned and modified integration files.
+./README.md whitespace=blank-at-eol,blank-at-eof,space-before-tab
+./fetch_repos.py whitespace=blank-at-eol,blank-at-eof,space-before-tab
+./repos.json whitespace=blank-at-eol,blank-at-eof,space-before-tab
+./CMakeLists.txt whitespace=blank-at-eol,blank-at-eof,space-before-tab
+main/main.cpp whitespace=blank-at-eol,blank-at-eof,space-before-tab
+main/apps/apps.h whitespace=blank-at-eol,blank-at-eof,space-before-tab
+main/apps/app_lapsight/** whitespace=blank-at-eol,blank-at-eof,space-before-tab
+main/hal/cap_lora868/cap_lora868.cpp whitespace=blank-at-eol,blank-at-eof,space-before-tab
+main/hal/cap_lora868/cap_lora868.h whitespace=blank-at-eol,blank-at-eof,space-before-tab
+tools/** whitespace=blank-at-eol,blank-at-eof,space-before-tab

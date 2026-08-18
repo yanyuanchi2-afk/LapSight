@@ -6,6 +6,8 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>LapSight uses location to measure closed-course speed, GPS quality, and future lap timing.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>LapSight uses Bluetooth to receive live GNSS position and speed from your Cardputer.</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

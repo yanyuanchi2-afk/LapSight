@@ -22,6 +22,7 @@ fun MainViewController(
     orientationController: OrientationController = NoOpOrientationController,
 ): UIViewController {
     val phoneGpsProvider = IosCoreLocationSampleProvider()
+    val externalGnssProvider = IosExternalGnssBleProvider()
 
     return ComposeUIViewController {
         val permissionGranted by phoneGpsProvider.permissionGranted.collectAsState()
@@ -29,6 +30,7 @@ fun MainViewController(
         DisposableEffect(phoneGpsProvider) {
             onDispose {
                 phoneGpsProvider.stop()
+                externalGnssProvider.stop()
             }
         }
 
@@ -36,11 +38,15 @@ fun MainViewController(
             orientationController = orientationController,
             displaySettingsStore = IosDisplaySettingsStore(),
             phoneGpsProvider = phoneGpsProvider,
+            externalGnssProvider = externalGnssProvider,
+            externalGnssConnectionState = externalGnssProvider.connectionState,
             phoneGpsPermission = PhoneGpsPermissionState(
                 isSupported = phoneGpsProvider.isSupported,
                 isGranted = permissionGranted,
                 requestPermission = phoneGpsProvider::requestPermission,
             ),
+            onExternalGnssRescan = externalGnssProvider::rescan,
+            onExternalGnssDisconnect = externalGnssProvider::disconnect,
             sessionStore = StoragePaths.fileSessionStore(),
         )
     }

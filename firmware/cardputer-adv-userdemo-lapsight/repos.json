@@ -1,0 +1,27 @@
+[
+    {
+        "url": "https://github.com/m5stack/M5GFX.git",
+        "path": "components/M5GFX",
+        "ref": "c6f92dc03226cdc04d67c705a2020f62ad21ad01"
+    },
+    {
+        "url": "https://github.com/m5stack/M5Unified.git",
+        "path": "components/M5Unified",
+        "ref": "5580ff6923a868cc71d5b30c962186bde2c85b67"
+    },
+    {
+        "url": "https://github.com/Forairaaaaa/mooncake.git",
+        "path": "components/mooncake",
+        "ref": "c1ab2adeca1b996cecf41f69e4f22d874b97f6ba"
+    },
+    {
+        "url": "https://github.com/Forairaaaaa/mooncake_log.git",
+        "path": "components/mooncake_log",
+        "ref": "fe97aafe5432a9f22c1414b45b59fad37a4bf27e"
+    },
+    {
+        "url": "https://github.com/Forairaaaaa/smooth_ui_toolkit.git",
+        "path": "components/smooth_ui_toolkit",
+        "ref": "c0bd45116ab443b7ad29cdce6c36f9e954a513a4"
+    }
+]

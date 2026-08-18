@@ -18,6 +18,17 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
+/.toolchains/
+/.gradle-user-home/
+/.xcode-derived/
+/.xcode-device/
+/firmware/**/.toolchains/
+/firmware/**/.pio/
+/firmware/cardputer-adv-userdemo-lapsight/components/
+/firmware/cardputer-adv-userdemo-lapsight/managed_components/
+/firmware/cardputer-adv-userdemo-lapsight/sdkconfig
+/firmware/cardputer-adv-userdemo-lapsight/sdkconfig.old
+/.device-backups/
 
 # Local secrets / environment
 .env
